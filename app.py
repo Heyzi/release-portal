@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import shutil
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -13,11 +14,13 @@ from werkzeug.routing import BaseConverter
 from logging_setup import configure_logging
 
 # OpenVSX blueprints:
-# - openvsx_ext_bp: legacy /extensions/... endpoints (including existing publish endpoint)
-# - openvsx_public_bp: public OpenVSX-compatible /api/... endpoints
-from openvsx_api import bp_ext as openvsx_ext_bp, bp_public as openvsx_public_bp
+# - bp_public: OpenVSX-compatible /api/... endpoints
+from openvsx_api import bp_public as openvsx_public_bp
 
-# Service-layer imports (file system, latest logic, DTO builders, etc.)
+# IDE API blueprint (/api/ide/...)
+from ide_api import bp_ide as ide_bp
+
+# Service-layer imports
 from releases_service import (  # noqa: F401
     RELEASES_ROOT,
     UNIVERSAL_PLATFORM,
@@ -53,14 +56,70 @@ class RegexConverter(BaseConverter):
 app.url_map.converters["re"] = RegexConverter
 
 # Register blueprints AFTER converter
-# - Legacy OpenVSX endpoints stay under /extensions/...
-app.register_blueprint(openvsx_ext_bp, url_prefix="/extensions")
-# - Public OpenVSX-compatible endpoints are under /api/...
+# IMPORTANT:
+# - We DO NOT register legacy /extensions/* endpoints anymore.
+# - Only public OpenVSX-compatible endpoints under /api/... remain.
 app.register_blueprint(openvsx_public_bp, url_prefix="")
+
+# IDE endpoints under /api/ide/...
+app.register_blueprint(ide_bp, url_prefix="")
 
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)  # type: ignore[method-assign]
 
 
+# -----------------------------
+# API docs pages
+# -----------------------------
+def _iter_endpoints(prefixes: List[str]) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for rule in app.url_map.iter_rules():
+        if rule.endpoint == "static":
+            continue
+        path = str(rule.rule)
+        if not any(path == p or path.startswith(p + "/") for p in prefixes):
+            continue
+        methods = sorted(m for m in (rule.methods or set()) if m not in {"HEAD", "OPTIONS"})
+        rows.append(
+            {
+                "path": path,
+                "methods_str": ", ".join(methods),
+                "endpoint": rule.endpoint,
+            }
+        )
+    rows.sort(key=lambda r: (r["path"], r["methods_str"], r["endpoint"]))
+    return rows
+
+
+@app.route("/api", methods=["GET"])
+def api_docs():
+    rows = _iter_endpoints(prefixes=["/api"])
+    return render_template(
+        "api_docs.html",
+        title="API endpoints",
+        subtitle="Доступные эндпоинты /api",
+        scope_label="/api",
+        generated_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+        rows=rows,
+    )
+
+
+@app.route("/admin/help", methods=["GET"])
+def admin_docs():
+    rows = _iter_endpoints(prefixes=["/admin"])
+    return render_template(
+        "api_docs.html",
+        title="Admin endpoints",
+        subtitle="Доступные эндпоинты /admin",
+        scope_label="/admin",
+        generated_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+        rows=rows,
+    )
+
+
+# -----------------------------
+# Existing release portal API (generic)
+# You can keep it, but IDE now has a clean /api/ide/* surface.
+# -----------------------------
 @app.route("/api/releases/file/<path:path>", methods=["GET"])
 def api_release_file(path: str):
     if not is_safe_relpath(path):
@@ -110,6 +169,9 @@ def api_releases():
     ), 200
 
 
+# -----------------------------
+# UI
+# -----------------------------
 def render_portal(is_admin: bool):
     categories: List[Dict[str, Any]] = build_projects_only()
 
@@ -148,6 +210,9 @@ def admin():
     return render_portal(is_admin=True)
 
 
+# -----------------------------
+# Admin actions (unchanged)
+# -----------------------------
 @app.route("/admin/delete-project", methods=["POST"])
 def admin_delete_project():
     category = (request.form.get("category") or "").strip()
@@ -333,108 +398,11 @@ def admin_delete_asset():
     return redirect(url_for("admin", category=category, project=project))
 
 
-@app.route("/<category>/latest", methods=["GET"])
-def category_latest(category: str):
-    # latest нужен только для категорий ide/tools (и любых других, которые реально есть в list_categories()).
-    if category not in list_categories():
-        abort(404, "Unknown category")
-
-    project = request.args.get("sub_product_name", "").strip()
-    os_raw = request.args.get("os_type", "").strip()
-    arch_raw = request.args.get("arch", "").strip()
-    current_version_param = request.args.get("current_version", "").strip()
-
-    if not project:
-        return (
-            jsonify(
-                {
-                    "state": False,
-                    "status": "error",
-                    "errorType": "invalid_parameters",
-                    "errorMessage": "Missing required parameter: sub_product_name",
-                }
-            ),
-            400,
-        )
-
-    pd = RELEASES_ROOT / category / project
-    if not pd.is_dir():
-        return (
-            jsonify(
-                {
-                    "state": False,
-                    "status": "error",
-                    "errorType": "file_not_found",
-                    "errorMessage": "Unknown sub_product_name",
-                }
-            ),
-            424,
-        )
-
-    if bool(os_raw) ^ bool(arch_raw):
-        return (
-            jsonify(
-                {
-                    "state": False,
-                    "status": "error",
-                    "errorType": "invalid_parameters",
-                    "errorMessage": "Both os_type and arch must be provided together",
-                }
-            ),
-            400,
-        )
-
-    latest_ver = ensure_latest_exists(pd, category)
-    if not latest_ver:
-        return (
-            jsonify({"state": False, "status": "error", "errorType": "file_not_found", "errorMessage": "No releases found"}),
-            424,
-        )
-
-    platform = UNIVERSAL_PLATFORM
-    if os_raw and arch_raw:
-        platform = normalize_platform(os_raw, arch_raw)
-
-    link = strict_pick_latest_symlink(pd, platform)
-    if not link:
-        return (
-            jsonify(
-                {
-                    "state": False,
-                    "status": "error",
-                    "errorType": "file_not_found",
-                    "errorMessage": f"No latest artifact for platform={platform}",
-                }
-            ),
-            424,
-        )
-
-    file_name = link.name
-    latest_rel_path = (
-        f"{category}/{project}/latest/{file_name}"
-        if platform == UNIVERSAL_PLATFORM
-        else f"{category}/{project}/latest/{platform}/{file_name}"
-    )
-
-    latest_url = f"{request.scheme}://{request.host}{url_for('api_release_file', path=latest_rel_path)}"
-
-    data_obj: Dict[str, Any] = {
-        "url": latest_url,
-        "sub_product_name": project,
-        "available": True,
-        "version": latest_ver,
-        "requested_current_version": current_version_param or None,
-        "platform": None if platform == UNIVERSAL_PLATFORM else platform,
-    }
-
-    return jsonify({"state": True, "status": "success", "data": data_obj, "result": data_obj}), 200
-
-
 # -----------------------------
 # CLI / Entry
 # -----------------------------
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Release portal (modularized)")
+    parser = argparse.ArgumentParser(description="Release portal")
     parser.add_argument("--releases-root", help=f"Root directory for releases (default: {RELEASES_ROOT})")
     parser.add_argument("--host", default="0.0.0.0", help="Host for Flask app")
     parser.add_argument("--port", type=int, default=8000, help="Port for Flask app")

@@ -16,11 +16,14 @@ import requests
 
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8000"
-DEFAULT_PUBLISH_PATH = "/extensions/admin/extensions/publish"
+# В твоём app.py зарегистрирован только bp_public, значит publish тут:
+DEFAULT_PUBLISH_PATH = "/api/user/publish"
 
 SEED_URLS = [
     "https://openvsx.eclipsecontent.org/redhat/vscode-yaml/1.20.2026010808/redhat.vscode-yaml-1.20.2026010808.vsix",
     "https://openvsx.eclipsecontent.org/KylinIdeTeam/cppdebug/linux-x64/0.1.0/KylinIdeTeam.cppdebug-0.1.0@linux-x64.vsix",
+    "https://openvsx.eclipsecontent.org/KylinIdeTeam/cppdebug/win32-x64/0.1.0/KylinIdeTeam.cppdebug-0.1.0@win32-x64.vsix",
+    "https://openvsx.eclipsecontent.org/KylinIdeTeam/cppdebug/darwin-x64/0.0.7/KylinIdeTeam.cppdebug-0.0.7@darwin-x64.vsix"
 ]
 
 ALLOWED_TP = {
@@ -122,14 +125,25 @@ def read_text_from_zip(zf: zipfile.ZipFile, path: str) -> Optional[str]:
 
 
 def parse_target_platform_from_manifest(manifest_text: str) -> Optional[str]:
-    m = re.search(
+    # 1) <Identity ... TargetPlatform="linux-x64">
+    m_identity = re.search(
+        r"<\s*Identity\b[^>]*\bTargetPlatform\s*=\s*\"([^\"]+)\"",
+        manifest_text,
+        flags=re.IGNORECASE,
+    )
+    if m_identity:
+        tp = (m_identity.group(1) or "").strip().lower()
+        return tp or None
+
+    # 2) Property Id="...TargetPlatform..." Value="linux-x64"
+    m_prop = re.search(
         r'Id\s*=\s*"[^"]*TargetPlatform[^"]*"\s+Value\s*=\s*"([^"]+)"',
         manifest_text,
         flags=re.IGNORECASE,
     )
-    if not m:
+    if not m_prop:
         return None
-    tp = (m.group(1) or "").strip().lower()
+    tp = (m_prop.group(1) or "").strip().lower()
     return tp or None
 
 
@@ -274,7 +288,6 @@ def check_one(
         checks.append(Check(name=name, ok=False, status=status, detail=detail))
 
     def skip(name: str, detail: str) -> None:
-        # "skip" is reported as OK with status 204 to avoid failing overall when not applicable
         checks.append(Check(name=name, ok=True, status=204, detail=detail))
 
     ns = meta.publisher
@@ -344,7 +357,7 @@ def check_one(
     except Exception as exc:
         bad("GET extension platform+version", 0, f"{url} :: {exc}")
 
-    # 4) Download from publish response (may be /extensions/api/... or /api/...)
+    # 4) Download from publish response (should be /api/...)
     dl_url = None
     try:
         dl_url = publish_resp.get("files", {}).get("download")
@@ -363,21 +376,19 @@ def check_one(
         bad("GET files.download (from publish)", 0, "publish response missing files.download")
 
     # 5) Direct file endpoints
-    # IMPORTANT: /api/{ns}/{ext}/{ver}/file/... maps ONLY to ".../{ver}/universal/..."
-    # For non-universal artifacts this is expected to be 404. Do not fail.
     url_univ = f"{api}/{ns}/{ext}/{ver}/file/{stored_filename}"
     if tp != "universal":
         try:
-            _ = download_bytes(sess, url_univ, expected=(200, 404))
-            # If it's 404, it's fine (platform-only extension)
             r = sess.get(url_univ, stream=True, timeout=60)
             if r.status_code == 200:
                 b = r.content
                 if len(b) < 4 or b[:2] != b"PK":
                     raise RuntimeError("not vsix")
                 ok("GET file (universal)", 200, url_univ)
-            else:
+            elif r.status_code == 404:
                 skip("GET file (universal)", f"{url_univ} :: not applicable for tp={tp} (expected 404)")
+            else:
+                raise RuntimeError(f"unexpected status {r.status_code}")
         except Exception as exc:
             bad("GET file (universal)", 0, f"{url_univ} :: {exc}")
     else:
@@ -389,7 +400,6 @@ def check_one(
         except Exception as exc:
             bad("GET file (universal)", 0, f"{url_univ} :: {exc}")
 
-    # Platform path should exist when tp != universal
     url_plat = f"{api}/{ns}/{ext}/{tp}/{ver}/file/{stored_filename}"
     try:
         b = download_bytes(sess, url_plat)
@@ -397,25 +407,23 @@ def check_one(
             raise RuntimeError("not vsix")
         ok("GET file (platform)", 200, url_plat)
     except Exception as exc:
-        # If tp==universal, platform route is still valid in your server, so we keep it as a real check too.
         bad("GET file (platform)", 0, f"{url_plat} :: {exc}")
 
     # 6) integrity
-    integrity_url: Optional[str] = None
+    integrity_url: Optional[str]
     if isinstance(dl_url, str) and dl_url:
         integrity_url = dl_url
     else:
         integrity_url = url_plat if tp != "universal" else url_univ
 
-    if integrity_url:
-        try:
-            b = download_bytes(sess, integrity_url)
-            got = sha256_bytes(b)
-            if got != meta.sha256:
-                raise RuntimeError(f"sha256 mismatch: got {got} expected {meta.sha256}")
-            ok("SHA256 integrity (roundtrip)", 200, got)
-        except Exception as exc:
-            bad("SHA256 integrity (roundtrip)", 0, str(exc))
+    try:
+        b = download_bytes(sess, integrity_url)
+        got = sha256_bytes(b)
+        if got != meta.sha256:
+            raise RuntimeError(f"sha256 mismatch: got {got} expected {meta.sha256}")
+        ok("SHA256 integrity (roundtrip)", 200, got)
+    except Exception as exc:
+        bad("SHA256 integrity (roundtrip)", 0, str(exc))
 
     return checks
 
@@ -432,7 +440,7 @@ def print_report(meta: VsixMeta, checks: List[Check]) -> bool:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Autonomous VSIX migrator + OpenVSX-compatible API checker (no auth).")
+    ap = argparse.ArgumentParser(description="VSIX downloader + OpenVSX-compatible API checker (no auth).")
     ap.add_argument("--base-url", default=DEFAULT_BASE_URL, help=f"Target service base URL (default {DEFAULT_BASE_URL})")
     ap.add_argument("--publish-path", default=DEFAULT_PUBLISH_PATH, help=f"Publish path (default {DEFAULT_PUBLISH_PATH})")
     ap.add_argument("--workdir", default=".vsix_work", help="Working directory for downloads/cache")

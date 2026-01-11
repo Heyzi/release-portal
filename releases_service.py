@@ -19,11 +19,7 @@ except Exception:  # pragma: no cover
 from notes_service import read_release_notes
 
 
-# -----------------------------
-# Globals / configuration
-# -----------------------------
 RELEASES_ROOT = Path("./data/releases")
-
 CATEGORIES = ["ide", "extensions", "tools"]
 
 UNIVERSAL_PLATFORM = "universal"
@@ -52,16 +48,10 @@ EXCLUDED_ASSET_NAMES_LOWER = {"readme.md", "release.md"}
 
 
 def set_releases_root(path: Path) -> None:
-    """
-    Override releases root directory (used by CLI).
-    """
     global RELEASES_ROOT
     RELEASES_ROOT = path
 
 
-# -----------------------------
-# Platform normalization
-# -----------------------------
 def normalize_os(os_raw: str) -> str:
     x = os_raw.strip().lower()
     if x in ("win", "windows", "win32"):
@@ -92,9 +82,6 @@ def normalize_platform(os_raw: str, arch_raw: str) -> str:
     return CANONICAL_PLATFORMS.get((os_key, arch_key), f"{os_key}-{arch_key}")
 
 
-# -----------------------------
-# Version sorting helpers
-# -----------------------------
 _semverish_re = re.compile(
     r"^v?(?P<num>\d+(?:\.\d+)*)(?:-(?P<pre>[0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$"
 )
@@ -121,9 +108,6 @@ def parse_version_key(version: str) -> Tuple:
     return (1,) + _semverish_key(version)
 
 
-# -----------------------------
-# File system helpers
-# -----------------------------
 def is_safe_relpath(p: str) -> bool:
     if not p or "\x00" in p:
         return False
@@ -185,9 +169,6 @@ def clear_dir_files_only(p: Path) -> None:
             unlink_if_exists(child)
 
 
-# -----------------------------
-# Releases discovery
-# -----------------------------
 def list_categories() -> List[str]:
     return [c for c in CATEGORIES if (RELEASES_ROOT / c).is_dir()]
 
@@ -217,9 +198,6 @@ def list_versions(product_dir: Path, category: str) -> List[str]:
     return sorted(versions, key=parse_version_key, reverse=True)
 
 
-# -----------------------------
-# Latest handling (atomic)
-# -----------------------------
 def extract_version_from_symlink_target(product_dir: Path, link: Path) -> Optional[str]:
     try:
         raw_target = os.readlink(str(link))
@@ -287,6 +265,7 @@ def ensure_latest_exists(product_dir: Path, category: str) -> Optional[str]:
     return versions[0]
 
 
+
 def strict_pick_latest_symlink(product_dir: Path, platform: str) -> Optional[Path]:
     latest_root = product_dir / "latest"
     if not latest_root.is_dir():
@@ -303,31 +282,74 @@ def strict_pick_latest_symlink(product_dir: Path, platform: str) -> Optional[Pat
     return sorted(syms, key=lambda x: x.name)[0] if syms else None
 
 
-# -----------------------------
-# DTO builders (used by Flask layer)
-# -----------------------------
 def build_projects_only() -> List[Dict[str, Any]]:
     result: List[Dict[str, Any]] = []
+
     for cat in list_categories():
-        projects = []
-        for proj in list_projects_for_category(cat):
-            pd = RELEASES_ROOT / cat / proj
-            versions = list_versions(pd, cat)
-            ensure_latest_exists(pd, cat)
-            projects.append(
-                {
-                    "id": proj,
-                    "name": proj,
-                    "description": None,
-                    "releases_count": len(versions),
-                }
-            )
+        projects: List[Dict[str, Any]] = []
+
+        if cat == "extensions":
+            cat_dir = RELEASES_ROOT / cat
+            for ns_dir in list_dirs(cat_dir):
+                ns = ns_dir.name
+                if ns.lower() == "latest":
+                    continue
+
+                for ext_dir in list_dirs(ns_dir):
+                    ext = ext_dir.name
+                    if ext.lower() == "latest":
+                        continue
+
+                    versions = list_versions(ext_dir, cat)
+                    ensure_latest_exists(ext_dir, cat)
+
+                    projects.append(
+                        {
+                            "id": f"{ns}/{ext}",
+                            "name": f"{ns}.{ext}",
+                            "description": None,
+                            "releases_count": len(versions),
+                        }
+                    )
+
+            projects.sort(key=lambda x: (str(x.get("name") or ""), str(x.get("id") or "")))
+
+        else:
+            for proj in list_projects_for_category(cat):
+                pd = RELEASES_ROOT / cat / proj
+                versions = list_versions(pd, cat)
+                ensure_latest_exists(pd, cat)
+                projects.append(
+                    {
+                        "id": proj,
+                        "name": proj,
+                        "description": None,
+                        "releases_count": len(versions),
+                    }
+                )
+
         result.append({"id": cat, "name": cat.capitalize(), "projects": projects})
+
     return result
 
 
 def build_releases_for_project(category: str, project: str) -> List[Dict[str, Any]]:
-    pd = RELEASES_ROOT / category / project
+    vendor: Optional[str] = None
+    ext: Optional[str] = None
+
+    if category == "extensions":
+        parts = [p for p in (project or "").split("/") if p]
+        if len(parts) != 2:
+            return []
+
+        vendor, ext = parts[0], parts[1]
+        if vendor.lower() == "latest" or ext.lower() == "latest":
+            return []
+
+        pd = RELEASES_ROOT / category / vendor / ext
+    else:
+        pd = RELEASES_ROOT / category / project
+
     if not pd.is_dir():
         return []
 
@@ -340,12 +362,21 @@ def build_releases_for_project(category: str, project: str) -> List[Dict[str, An
         vdir = pd / ver
         assets: List[Dict[str, Any]] = []
 
+        def rel_path_for(file_path: Path, platform: Optional[str] = None) -> str:
+            if category == "extensions" and vendor and ext:
+                if platform:
+                    return f"{category}/{vendor}/{ext}/{ver}/{platform}/{file_path.name}"
+                return f"{category}/{vendor}/{ext}/{ver}/{file_path.name}"
+            if platform:
+                return f"{category}/{project}/{ver}/{platform}/{file_path.name}"
+            return f"{category}/{project}/{ver}/{file_path.name}"
+
         for f in list_files_assets(vdir):
             assets.append(
                 {
                     "name": f.name,
                     "size": human_size(f.stat().st_size),
-                    "href": url_for("api_release_file", path=f"{category}/{project}/{ver}/{f.name}"),
+                    "href": url_for("api_release_file", path=rel_path_for(f)),
                     "platform": None,
                 }
             )
@@ -356,10 +387,7 @@ def build_releases_for_project(category: str, project: str) -> List[Dict[str, An
                     {
                         "name": f.name,
                         "size": human_size(f.stat().st_size),
-                        "href": url_for(
-                            "api_release_file",
-                            path=f"{category}/{project}/{ver}/{plat_dir.name}/{f.name}",
-                        ),
+                        "href": url_for("api_release_file", path=rel_path_for(f, platform=plat_dir.name)),
                         "platform": plat_dir.name,
                     }
                 )
@@ -370,12 +398,11 @@ def build_releases_for_project(category: str, project: str) -> List[Dict[str, An
                 "tag": ver,
                 "title": None,
                 "published_at": _published_epoch_from_dir(vdir),
-                "is_latest": ver == latest_ver,
+                "is_latest": bool(latest_ver) and ver == latest_ver,
                 "assets": assets,
                 "notes_name": notes[0] if notes else None,
                 "notes": notes[1] if notes else None,
                 "notes_html": notes[2] if notes else None,
-                "notes_format": "html" if notes else None,
                 "notes_format": "html" if notes else None,
             }
         )

@@ -10,9 +10,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import Blueprint, Response, abort, jsonify, request, send_from_directory, url_for
+from flask import Blueprint, Response, abort, jsonify, request, send_from_directory
 
-from releases_service import RELEASES_ROOT, is_safe_relpath  # ВАЖНО: берём у вас
+from releases_service import (
+    RELEASES_ROOT,
+    ensure_latest_exists,
+    get_latest_version_from_symlinks,
+    is_safe_relpath,  # ВАЖНО: берём у вас
+    list_versions,
+    set_latest_atomic,
+)
 
 # Two blueprints:
 # - bp_ext: legacy routes mounted under /extensions (keeps your publish endpoint as-is)
@@ -133,9 +140,8 @@ def _extract_vsix_info(vsix_bytes: bytes) -> VsixInfo:
 
 
 def _store_vsix(vsix_bytes: bytes, info: VsixInfo) -> Dict[str, Any]:
-    # ВАЖНО: для extensions latest не нужен, поэтому:
-    # - не создаём latest/ и симлинки
-    # - сохраняем только по version/targetPlatform
+    # Храним VSIX по version/targetPlatform.
+    # Latest (ручной/авто) хранится через releases_service.set_latest_atomic() в ext_dir/latest.
     ns, nm, ver, tp = info.namespace, info.name, info.version, info.target_platform
 
     ext_dir = _ext_root() / ns / nm
@@ -160,6 +166,13 @@ def _store_vsix(vsix_bytes: bytes, info: VsixInfo) -> Dict[str, Any]:
             "files": {"vsix": str(vsix_path.relative_to(RELEASES_ROOT)).replace(os.sep, "/")},
         },
     )
+
+    # Автоматически ставим latest на публикуемую версию.
+    # UI (Make latest) может потом переустановить.
+    try:
+        set_latest_atomic(ext_dir, ver)
+    except Exception:
+        pass
 
     return {"namespace": ns, "name": nm, "version": ver, "targetPlatform": tp, "filename": filename}
 
@@ -204,13 +217,6 @@ def _iter_extensions(ns_dir: Path) -> List[Path]:
         return []
 
 
-def _iter_versions(ext_dir: Path) -> List[Path]:
-    try:
-        return [p for p in ext_dir.iterdir() if p.is_dir() and p.name.lower() != "latest"]
-    except OSError:
-        return []
-
-
 def _read_metadata(vdir: Path) -> Optional[Dict[str, Any]]:
     mp = vdir / "metadata.json"
     if not mp.is_file():
@@ -242,6 +248,22 @@ def _choose_tp_for_version(vdir: Path, requested_tp: Optional[str]) -> Optional[
         return None
 
     return None
+
+
+def _pick_default_version(ext_dir: Path) -> Optional[str]:
+    # 1) Пиннутый latest из UI (через ext_dir/latest/* symlink tree)
+    pinned = get_latest_version_from_symlinks(ext_dir)
+    if pinned and (ext_dir / pinned).is_dir():
+        return pinned
+
+    # 2) Иначе создаём latest на максимальную (semver) и используем её
+    v = ensure_latest_exists(ext_dir, category="extensions")
+    if v and (ext_dir / v).is_dir():
+        return v
+
+    # 3) Фолбэк
+    vs = list_versions(ext_dir, category="extensions")
+    return vs[0] if vs else None
 
 
 def _matches_query(
@@ -310,13 +332,10 @@ def admin_extensions_publish():
 
 
 # -----------------------------
-# PUBLISH (public OpenVSX-compatible alias, delegates to legacy handler)
+# PUBLISH (public OpenVSX-compatible alias)
 # -----------------------------
 @bp_public.route("/api/user/publish", methods=["POST"])
 def api_user_publish():
-    # Keep the logic identical by delegating into the same code path.
-    # We call the legacy handler and only adjust Location + download URLs to public /api/... paths.
-    # Implementation detail: we re-run the same logic here to avoid messing with Flask internals.
     vsix_bytes: Optional[bytes] = None
     ct = (request.content_type or "").lower()
     if ct.startswith("application/octet-stream") or ct.startswith("application/zip"):
@@ -400,23 +419,32 @@ def _handle_query() -> Tuple[Response, int]:
             if not _matches_query(ns, name, extension_id, namespace_name, extension_name):
                 continue
 
-            vdirs = _iter_versions(ext_dir)
+            versions = list_versions(ext_dir, category="extensions")
+
             if extension_version:
-                vdirs = [v for v in vdirs if v.name == extension_version]
+                versions = [v for v in versions if v == extension_version]
 
             versions_payload: List[Dict[str, Any]] = []
 
-            for vdir in vdirs:
-                ver = vdir.name
-                tp = _choose_tp_for_version(vdir, target_platform)
-                if not tp:
-                    continue
+            if include_all_versions:
+                for ver in versions:
+                    vdir = ext_dir / ver
+                    tp = _choose_tp_for_version(vdir, target_platform)
+                    if not tp:
+                        continue
+                    versions_payload.append(_openvsx_extension_json(ns, name, ver, tp, base, public=True))
+            else:
+                ver = _pick_default_version(ext_dir)
+                if ver:
+                    # если клиент запросил extensionVersion, то latest не должен “перебивать” запрос
+                    if extension_version and ver != extension_version:
+                        # extension_version уже отфильтрован выше; но на всякий случай:
+                        ver = extension_version
 
-                ext_json = _openvsx_extension_json(ns, name, ver, tp, base, public=True)
-                versions_payload.append(ext_json)
-
-                if not include_all_versions:
-                    break
+                    vdir = ext_dir / ver
+                    tp = _choose_tp_for_version(vdir, target_platform)
+                    if tp:
+                        versions_payload.append(_openvsx_extension_json(ns, name, ver, tp, base, public=True))
 
             if not versions_payload:
                 continue
@@ -430,8 +458,7 @@ def _handle_query() -> Tuple[Response, int]:
                     }
                 )
             else:
-                # Many clients accept list of extensions with top version object.
-                # We return "extensions" items as the version object directly to keep it minimal and practical.
+                # Minimal practical shape: list of top version objects
                 items.append(versions_payload[0])
 
     total = len(items)

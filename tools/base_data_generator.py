@@ -36,18 +36,6 @@ DEMO_CATEGORIES: Dict[str, List[DemoProject]] = {
         ),
     ],
     # extensions: intentionally disabled (do not seed)
-    "tools": [
-        DemoProject(
-            id="mytool1",
-            versions=["build-123", "build-456", "build-789"],
-            platforms=["universal", "linux-x64", "alpine-x64"],
-        ),
-        DemoProject(
-            id="mytool2",
-            versions=["v1.0", "v2.0"],
-            platforms=["universal"],
-        ),
-    ],
 }
 
 
@@ -96,7 +84,6 @@ def write_demo_notes(vdir: Path, project_id: str, version: str, version_index: i
     notes_name = note_variants[version_index % len(note_variants)]
     notes_path = vdir / notes_name
 
-    # Простейшее, но реалистичное содержимое
     lines = [
         f"# Release notes for {project_id} {version}",
         "",
@@ -108,8 +95,7 @@ def write_demo_notes(vdir: Path, project_id: str, version: str, version_index: i
         f"- Feature #{version_index + 1}: demo change description.",
         "- Various internal improvements and bug fixes.",
     ]
-    text = "\n".join(lines) + "\n"
-    notes_path.write_text(text, encoding="utf-8")
+    notes_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def create_release(
@@ -163,7 +149,6 @@ def create_release(
         sidecar = plat_dir / (artifact_name + ".sha256")
         sidecar.write_text("dummy-checksum-platform\n", encoding="utf-8")
 
-    # Demo release notes (release.md / readme.md с разным регистром)
     write_demo_notes(vdir=vdir, project_id=project_id, version=version, version_index=version_index)
 
 
@@ -203,6 +188,7 @@ def ensure_clean_root(root: Path, force: bool) -> None:
             for child in root.iterdir():
                 if child.is_dir():
                     import shutil
+
                     shutil.rmtree(child, ignore_errors=True)
                 else:
                     child.unlink()

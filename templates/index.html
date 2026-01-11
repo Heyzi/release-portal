@@ -198,7 +198,6 @@
             text-align: center;
             letter-spacing: 0;
             text-transform: lowercase;
-            /* all categories in lower case */
             line-height: 1.1;
         }
 
@@ -402,13 +401,11 @@
             overflow: hidden;
         }
 
-        /* FIX #2: align everything vertically (tag / latest / date / actions) */
         .release-head {
             padding: 10px 12px;
             border-bottom: 1px solid var(--border-soft);
             display: flex;
             align-items: center;
-            /* was flex-start */
             justify-content: space-between;
             gap: 10px;
             flex-wrap: wrap;
@@ -454,7 +451,6 @@
             flex: 0 0 auto;
             display: flex;
             align-items: center;
-            /* ensure baseline alignment */
             gap: 10px;
             line-height: 1.2;
             font-variant-numeric: tabular-nums;
@@ -673,10 +669,18 @@
 
             <div class="header-right">
                 <div class="mini-link">
+                    <span class="mono">Docs:</span>
+                    <a href="/api" class="mono">/api</a>
+                    <span class="mono">·</span>
+                    <a href="/admin/help" class="mono">/admin/help</a>
+                </div>
+
+                <div class="mini-link">
                     <span class="mono">Latest:</span>
-                    <a id="latestApiLink" href="#" class="mono">/…/latest?sub_product_name=…</a>
+                    <a id="latestApiLink" href="#" class="mono">/api/ide/latest?sub_product_name=product</a>
                 </div>
             </div>
+
         </header>
 
         <main class="layout">
@@ -728,7 +732,6 @@
             <section class="card main" id="mainPanel">
                 <div class="main-head">
                     <div class="project-heading">
-                        <!-- Убрали "Extensions/ext1": показываем только project -->
                         <h2 id="projectTitle">{{ selected_project_id or 'Releases' }}</h2>
                     </div>
 
@@ -821,16 +824,40 @@
             });
         }
 
+        function _setLatestChip(href, label) {
+            if (!latestApiLink) return;
+            latestApiLink.textContent = label || href || '';
+            latestApiLink.setAttribute('href', href || '#');
+        }
+
         function updateLatestApiChip(categoryId, projectId) {
             if (!latestApiLink) return;
+
             if (!categoryId || !projectId) {
-                latestApiLink.textContent = '/…/latest?sub_product_name=…';
-                latestApiLink.setAttribute('href', '#');
+                _setLatestChip('#', '/api/ide/latest?sub_product_name=product');
                 return;
             }
+
+            // OpenVSX-compatible latest for extensions:
+            // projectId for extensions is "ns/ext"
+            // OpenVSX expects extensionId as "ns.ext"
+            if (categoryId === 'extensions') {
+                const extensionId = String(projectId).replace('/', '.');
+                const href = '/api/-/query?extensionId=' + encodeURIComponent(extensionId) + '&size=1&offset=0';
+                _setLatestChip(href, href);
+                return;
+            }
+
+            // IDE latest (separate API surface under /api/ide/*)
+            if (categoryId === 'ide') {
+                const href = '/api/ide/latest?sub_product_name=' + encodeURIComponent(projectId);
+                _setLatestChip(href, href);
+                return;
+            }
+
+            // Fallback for other categories (keeps your existing convention if those endpoints exist)
             const href = '/' + categoryId + '/latest?sub_product_name=' + encodeURIComponent(projectId);
-            latestApiLink.textContent = href;
-            latestApiLink.setAttribute('href', href);
+            _setLatestChip(href, href);
         }
 
         function setActiveProjectUi(categoryId, projectId) {
@@ -864,7 +891,6 @@
                 if (show) anyVisible = true;
             });
 
-            // если после фильтра активный проект скрыт — переключимся на первый видимый
             const active = projectItems.find(li => li.classList.contains('active'));
             if (!active || active.style.display === 'none') {
                 const first = projectItems.find(li => li.style.display !== 'none');
@@ -875,7 +901,6 @@
                     loadReleases(cid, pid);
                     updateUrl(cid, pid);
                 } else {
-                    // нет проектов по фильтру
                     updateLatestApiChip(categoryId, '');
                     if (releaseList) {
                         releaseList.innerHTML = '';
@@ -890,7 +915,6 @@
         function getSelectedCategory() {
             const activeTab = tabButtons.find(b => b.classList.contains('active'));
             if (activeTab) return activeTab.getAttribute('data-category-id') || '';
-            // fallback: категория активного проекта
             return getActiveCategoryId();
         }
 
@@ -1000,8 +1024,6 @@
                     notesUploadForm.appendChild(notesUploadBtn);
                     actions.appendChild(notesUploadForm);
 
-                    /* FIX #3: asset upload button/form removed */
-
                     headChildren.push(actions);
                 }
 
@@ -1013,16 +1035,14 @@
                     'data-release-text': (tag + ' ' + (publishedAt || '')).toLowerCase()
                 }, [head]);
 
-                // Notes (без подписи "Release notes (Release.MD)")
                 if (r && typeof r.notes_html === 'string' && r.notes_html.trim() !== '') {
                     const notesBox = el('div', { className: 'notes' }, []);
                     const body = el('div', { className: 'notes-body md' }, []);
-                    body.innerHTML = r.notes_html; // safe: sanitized on backend with bleach
+                    body.innerHTML = r.notes_html;
                     notesBox.appendChild(body);
                     article.appendChild(notesBox);
                 }
 
-                // Assets
                 if (assets.length > 0) {
                     const ul = el('ul', { className: 'asset-list' }, []);
                     assets.forEach(a => {
@@ -1120,7 +1140,6 @@
         }
 
         function pickFirstProjectInCategory(categoryId) {
-            // учитываем текущий search
             const query = (projectSearch ? projectSearch.value : '').trim().toLowerCase();
             const first = projectItems.find(li => {
                 const cid = li.getAttribute('data-category-id') || '';
@@ -1131,7 +1150,6 @@
             return first || null;
         }
 
-        // Навигация по проектам (без перезагрузки)
         projectItems.forEach(li => {
             const a = li.querySelector('a.project-link');
             if (!a) return;
@@ -1149,22 +1167,19 @@
             });
         });
 
-        // Переключение категорий
         tabButtons.forEach(btn => {
             btn.addEventListener('click', function () {
                 const cid = btn.getAttribute('data-category-id') || '';
                 if (!cid) return;
 
                 setActiveTab(cid);
-                // сброс фильтра релизов при смене категории/проекта
                 if (releaseSearch) releaseSearch.value = '';
 
-                // выбрать первый проект категории
                 const first = pickFirstProjectInCategory(cid);
                 if (first) {
                     const pid = first.getAttribute('data-project-id') || '';
                     setActiveProjectUi(cid, pid);
-                    applySidebarFilter(); // скрыть проекты других категорий
+                    applySidebarFilter();
                     loadReleases(cid, pid);
                     updateUrl(cid, pid);
                 } else {
@@ -1182,13 +1197,10 @@
         if (projectSearch) projectSearch.addEventListener('input', () => applySidebarFilter());
         if (releaseSearch) releaseSearch.addEventListener('input', () => filterReleases(releaseSearch.value));
 
-        // Initial state from server
         const initialCid = '{{ selected_category }}';
         const initialPid = '{{ selected_project_id }}';
 
-        // Применяем первичную фильтрацию sidebar: показываем только выбранную категорию
         function init() {
-            // если сервер не выбрал — берем первую категорию и первый проект
             let cid = initialCid || '';
             let pid = initialPid || '';
 
