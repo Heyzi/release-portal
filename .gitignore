@@ -209,3 +209,5 @@ __marimo__/
 
 data
 .vsix_work
+.DS_Store
+node_modules

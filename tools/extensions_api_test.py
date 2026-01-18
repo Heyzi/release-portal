@@ -10,20 +10,19 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlparse, urlencode
+from urllib.parse import urlparse
 
 import requests
 
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8000"
-# В твоём app.py зарегистрирован только bp_public, значит publish тут:
 DEFAULT_PUBLISH_PATH = "/api/user/publish"
 
 SEED_URLS = [
     "https://openvsx.eclipsecontent.org/redhat/vscode-yaml/1.20.2026010808/redhat.vscode-yaml-1.20.2026010808.vsix",
     "https://openvsx.eclipsecontent.org/KylinIdeTeam/cppdebug/linux-x64/0.1.0/KylinIdeTeam.cppdebug-0.1.0@linux-x64.vsix",
     "https://openvsx.eclipsecontent.org/KylinIdeTeam/cppdebug/win32-x64/0.1.0/KylinIdeTeam.cppdebug-0.1.0@win32-x64.vsix",
-    "https://openvsx.eclipsecontent.org/KylinIdeTeam/cppdebug/darwin-x64/0.0.7/KylinIdeTeam.cppdebug-0.0.7@darwin-x64.vsix"
+    "https://openvsx.eclipsecontent.org/KylinIdeTeam/cppdebug/darwin-x64/0.0.7/KylinIdeTeam.cppdebug-0.0.7@darwin-x64.vsix",
 ]
 
 ALLOWED_TP = {
@@ -47,7 +46,7 @@ class VsixMeta:
     publisher: str
     name: str
     version: str
-    target_platform: str  # "universal" if unknown
+    target_platform: str
     sha256: str
     filename: str
     source_url: str
@@ -80,6 +79,13 @@ def safe_segment(s: str) -> str:
     return s
 
 
+def normalize_tp(tp: str) -> str:
+    v = (tp or "").strip().lower()
+    if not v:
+        return "universal"
+    return v if v in ALLOWED_TP else "universal"
+
+
 def req(
     sess: requests.Session,
     method: str,
@@ -87,15 +93,28 @@ def req(
     *,
     expected: Tuple[int, ...],
     headers: Optional[Dict[str, str]] = None,
-    data: Optional[bytes] = None,
+    data: Any = None,
+    json_body: Optional[Dict[str, Any]] = None,
+    files: Any = None,
     stream: bool = False,
     timeout: int = 60,
+    allow_redirects: bool = True,
 ) -> requests.Response:
-    r = sess.request(method, url, headers=headers, data=data, stream=stream, timeout=timeout)
+    r = sess.request(
+        method,
+        url,
+        headers=headers,
+        data=data,
+        json=json_body,
+        files=files,
+        stream=stream,
+        timeout=timeout,
+        allow_redirects=allow_redirects,
+    )
     if r.status_code not in expected:
         body = ""
         try:
-            body = r.text[:800]
+            body = r.text[:1200]
         except Exception:
             body = "<non-text>"
         raise RuntimeError(f"{method} {url} -> {r.status_code}, expected {expected}. Body: {body}")
@@ -125,7 +144,6 @@ def read_text_from_zip(zf: zipfile.ZipFile, path: str) -> Optional[str]:
 
 
 def parse_target_platform_from_manifest(manifest_text: str) -> Optional[str]:
-    # 1) <Identity ... TargetPlatform="linux-x64">
     m_identity = re.search(
         r"<\s*Identity\b[^>]*\bTargetPlatform\s*=\s*\"([^\"]+)\"",
         manifest_text,
@@ -135,7 +153,6 @@ def parse_target_platform_from_manifest(manifest_text: str) -> Optional[str]:
         tp = (m_identity.group(1) or "").strip().lower()
         return tp or None
 
-    # 2) Property Id="...TargetPlatform..." Value="linux-x64"
     m_prop = re.search(
         r'Id\s*=\s*"[^"]*TargetPlatform[^"]*"\s+Value\s*=\s*"([^"]+)"',
         manifest_text,
@@ -233,28 +250,27 @@ def download_vsix(sess: requests.Session, url: str, workdir: Path, force: bool) 
     return target, meta, b
 
 
-def publish_vsix(sess: requests.Session, base_url: str, publish_path: str, vsix_bytes: bytes) -> Dict[str, Any]:
+def publish_openvsx_like(
+    sess: requests.Session,
+    base_url: str,
+    publish_path: str,
+    vsix_bytes: bytes,
+    *,
+    tp: str,
+    filename: str,
+) -> Dict[str, Any]:
     url = base_url.rstrip("/") + publish_path
-    r = req(
-        sess,
-        "POST",
-        url,
-        expected=(201,),
-        headers={"Content-Type": "application/octet-stream"},
-        data=vsix_bytes,
-    )
-    try:
-        return r.json()
-    except Exception as exc:
-        raise RuntimeError(f"Publish response is not JSON: {exc}. Body: {r.text[:800]}") from exc
+    tp_n = normalize_tp(tp)
 
+    # OpenVSX publish: multipart/form-data, "file" + form "targetPlatform"
+    files = {"file": (filename or "extension.vsix", vsix_bytes, "application/octet-stream")}
+    data = {}
+    if tp_n and tp_n != "universal":
+        data["targetPlatform"] = tp_n
 
-def get_json(sess: requests.Session, url: str, expected: Tuple[int, ...] = (200,)) -> Dict[str, Any]:
-    r = req(sess, "GET", url, expected=expected)
-    try:
-        return r.json()
-    except Exception as exc:
-        raise RuntimeError(f"GET {url} not JSON: {exc}. Body: {r.text[:800]}") from exc
+    r = req(sess, "POST", url, expected=(200, 201), files=files, data=data, headers={"Accept": "application/json"})
+    j = r.json()
+    return j if isinstance(j, dict) else {"raw": j}
 
 
 def download_bytes(sess: requests.Session, url: str, expected: Tuple[int, ...] = (200,)) -> bytes:
@@ -262,174 +278,87 @@ def download_bytes(sess: requests.Session, url: str, expected: Tuple[int, ...] =
     return r.content
 
 
-def _api_base(base_url: str) -> str:
-    return base_url.rstrip("/") + "/api"
+def post_json(sess: requests.Session, url: str, body: Dict[str, Any], expected: Tuple[int, ...] = (200,)) -> Dict[str, Any]:
+    r = req(
+        sess,
+        "POST",
+        url,
+        expected=expected,
+        headers={"Content-Type": "application/json", "Accept": "application/json;api-version=3.0-preview.1"},
+        json_body=body,
+    )
+    return r.json()
 
 
-def _api_query_url(api_base: str, params: Dict[str, Any], *, v1: bool = False) -> str:
-    path = "/v1/-/query" if v1 else "/-/query"
-    qs = urlencode({k: v for k, v in params.items() if v is not None and v != ""})
-    return f"{api_base}{path}?{qs}" if qs else f"{api_base}{path}"
+def get_json(sess: requests.Session, url: str, expected: Tuple[int, ...] = (200,)) -> Dict[str, Any]:
+    r = req(sess, "GET", url, expected=expected)
+    return r.json()
 
 
-def check_one(
-    sess: requests.Session,
-    base_url: str,
-    meta: VsixMeta,
-    publish_resp: Dict[str, Any],
-) -> List[Check]:
-    checks: List[Check] = []
-    api = _api_base(base_url)
-
-    def ok(name: str, status: int, detail: str) -> None:
-        checks.append(Check(name=name, ok=True, status=status, detail=detail))
-
-    def bad(name: str, status: int, detail: str) -> None:
-        checks.append(Check(name=name, ok=False, status=status, detail=detail))
-
-    def skip(name: str, detail: str) -> None:
-        checks.append(Check(name=name, ok=True, status=204, detail=detail))
-
-    ns = meta.publisher
-    ext = meta.name
-    ver = meta.version
-    tp = (meta.target_platform or "universal").lower()
-    if tp not in ALLOWED_TP:
-        tp = "universal"
-
-    stored_filename = f"{ns}.{ext}-{ver}.vsix"
-
-    # 0) Query endpoints
-    for v1 in (False, True):
-        qurl = _api_query_url(
-            api,
+def vscode_extensionquery_body(ext_id: str, tp: str) -> Dict[str, Any]:
+    # Ваша реализация FILTER_TARGET (8) ожидает именно targetPlatform (win32-x64 и т.п.)
+    return {
+        "filters": [
             {
-                "extensionId": f"{ns}.{ext}",
-                "includeAllVersions": "false",
-                "targetPlatform": tp,
-                "size": 5,
-                "offset": 0,
-            },
-            v1=v1,
-        )
-        try:
-            j = get_json(sess, qurl)
-            if "extensions" not in j or not isinstance(j.get("extensions"), list):
-                raise RuntimeError("query response missing/invalid 'extensions'")
-            ok("GET query" + (" (v1)" if v1 else ""), 200, qurl)
-        except Exception as exc:
-            bad("GET query" + (" (v1)" if v1 else ""), 0, f"{qurl} :: {exc}")
-
-    # 1) Namespace
-    url = f"{api}/{ns}"
-    try:
-        j = get_json(sess, url)
-        if j.get("name") != ns:
-            raise RuntimeError(f"expected name={ns}, got {j.get('name')}")
-        ok("GET namespace", 200, url)
-    except Exception as exc:
-        bad("GET namespace", 0, f"{url} :: {exc}")
-
-    # 2) Extension version
-    url = f"{api}/{ns}/{ext}/{ver}"
-    try:
-        j = get_json(sess, url)
-        if j.get("namespace") != ns or j.get("name") != ext:
-            raise RuntimeError("namespace/name mismatch")
-        if j.get("version") != ver:
-            raise RuntimeError(f"version mismatch: {j.get('version')} != {ver}")
-        dl = j.get("files", {}).get("download")
-        if not isinstance(dl, str) or not dl:
-            raise RuntimeError("missing files.download")
-        ok("GET extension version", 200, url)
-    except Exception as exc:
-        bad("GET extension version", 0, f"{url} :: {exc}")
-
-    # 3) Extension platform+version
-    url = f"{api}/{ns}/{ext}/{tp}/{ver}"
-    try:
-        j = get_json(sess, url)
-        if j.get("namespace") != ns or j.get("name") != ext:
-            raise RuntimeError("namespace/name mismatch")
-        if j.get("version") != ver:
-            raise RuntimeError("version mismatch")
-        ok("GET extension platform+version", 200, url)
-    except Exception as exc:
-        bad("GET extension platform+version", 0, f"{url} :: {exc}")
-
-    # 4) Download from publish response (should be /api/...)
-    dl_url = None
-    try:
-        dl_url = publish_resp.get("files", {}).get("download")
-    except Exception:
-        dl_url = None
-
-    if isinstance(dl_url, str) and dl_url:
-        try:
-            b = download_bytes(sess, dl_url)
-            if len(b) < 4 or b[:2] != b"PK":
-                raise RuntimeError("download not zip/vsix")
-            ok("GET files.download (from publish)", 200, dl_url)
-        except Exception as exc:
-            bad("GET files.download (from publish)", 0, f"{dl_url} :: {exc}")
-    else:
-        bad("GET files.download (from publish)", 0, "publish response missing files.download")
-
-    # 5) Direct file endpoints
-    url_univ = f"{api}/{ns}/{ext}/{ver}/file/{stored_filename}"
-    if tp != "universal":
-        try:
-            r = sess.get(url_univ, stream=True, timeout=60)
-            if r.status_code == 200:
-                b = r.content
-                if len(b) < 4 or b[:2] != b"PK":
-                    raise RuntimeError("not vsix")
-                ok("GET file (universal)", 200, url_univ)
-            elif r.status_code == 404:
-                skip("GET file (universal)", f"{url_univ} :: not applicable for tp={tp} (expected 404)")
-            else:
-                raise RuntimeError(f"unexpected status {r.status_code}")
-        except Exception as exc:
-            bad("GET file (universal)", 0, f"{url_univ} :: {exc}")
-    else:
-        try:
-            b = download_bytes(sess, url_univ)
-            if len(b) < 4 or b[:2] != b"PK":
-                raise RuntimeError("not vsix")
-            ok("GET file (universal)", 200, url_univ)
-        except Exception as exc:
-            bad("GET file (universal)", 0, f"{url_univ} :: {exc}")
-
-    url_plat = f"{api}/{ns}/{ext}/{tp}/{ver}/file/{stored_filename}"
-    try:
-        b = download_bytes(sess, url_plat)
-        if len(b) < 4 or b[:2] != b"PK":
-            raise RuntimeError("not vsix")
-        ok("GET file (platform)", 200, url_plat)
-    except Exception as exc:
-        bad("GET file (platform)", 0, f"{url_plat} :: {exc}")
-
-    # 6) integrity
-    integrity_url: Optional[str]
-    if isinstance(dl_url, str) and dl_url:
-        integrity_url = dl_url
-    else:
-        integrity_url = url_plat if tp != "universal" else url_univ
-
-    try:
-        b = download_bytes(sess, integrity_url)
-        got = sha256_bytes(b)
-        if got != meta.sha256:
-            raise RuntimeError(f"sha256 mismatch: got {got} expected {meta.sha256}")
-        ok("SHA256 integrity (roundtrip)", 200, got)
-    except Exception as exc:
-        bad("SHA256 integrity (roundtrip)", 0, str(exc))
-
-    return checks
+                "criteria": [
+                    {"filterType": 8, "value": tp},      # targetPlatform
+                    {"filterType": 4, "value": ext_id},  # extensionId
+                ],
+                "pageNumber": 1,
+                "pageSize": 20,
+                "sortBy": 0,
+                "sortOrder": 0,
+            }
+        ],
+        "flags": 0x1 | 0x2 | 0x80 | 0x10 | 0x100,
+    }
 
 
-def print_report(meta: VsixMeta, checks: List[Check]) -> bool:
-    print(f"\n=== {meta.publisher}.{meta.name}@{meta.version} tp={meta.target_platform} sha256={meta.sha256[:12]}… ===")
+def pick_vsix_source_from_extensionquery(resp_json: Dict[str, Any], ext_id: str) -> Tuple[str, str]:
+    results = resp_json.get("results")
+    if not isinstance(results, list) or not results:
+        raise RuntimeError("extensionquery: missing results")
+
+    exts = results[0].get("extensions")
+    if not isinstance(exts, list):
+        raise RuntimeError("extensionquery: missing extensions list")
+
+    want = (ext_id or "").strip().lower()
+    target = None
+    for x in exts:
+        if not isinstance(x, dict):
+            continue
+        got = str(x.get("extensionId") or "").strip().lower()
+        if got == want:
+            target = x
+            break
+
+    if not target:
+        got_ids = []
+        for x in exts:
+            if isinstance(x, dict) and x.get("extensionId"):
+                got_ids.append(str(x.get("extensionId")))
+        raise RuntimeError(f"extensionquery: extensionId not found: {ext_id} (got: {got_ids})")
+
+    versions = target.get("versions")
+    if not isinstance(versions, list) or not versions:
+        raise RuntimeError("extensionquery: missing versions")
+
+    for v in versions:
+        if not isinstance(v, dict):
+            continue
+        ver = str(v.get("version") or "")
+        files = v.get("files")
+        if isinstance(files, list):
+            for f in files:
+                if isinstance(f, dict) and isinstance(f.get("source"), str) and f["source"]:
+                    return ver, f["source"]
+
+    raise RuntimeError("extensionquery: no versions[].files[].source found")
+
+
+def print_report(title: str, checks: List[Check]) -> bool:
+    print(f"\n--- {title} ---")
     ok_all = True
     for c in checks:
         flag = "OK" if c.ok else "FAIL"
@@ -439,8 +368,79 @@ def print_report(meta: VsixMeta, checks: List[Check]) -> bool:
     return ok_all
 
 
+def check_marketplace_flow(sess: requests.Session, base_url: str, meta: VsixMeta) -> List[Check]:
+    checks: List[Check] = []
+    vscode = base_url.rstrip("/") + "/vscode"
+
+    def ok(name: str, status: int, detail: str) -> None:
+        checks.append(Check(name=name, ok=True, status=status, detail=detail))
+
+    def bad(name: str, status: int, detail: str) -> None:
+        checks.append(Check(name=name, ok=False, status=status, detail=detail))
+
+    tp = normalize_tp(meta.target_platform or "universal")
+    ext_id = f"{meta.publisher}.{meta.name}"
+
+    # 1) SEARCH
+    qurl = f"{vscode}/gallery/extensionquery"
+    try:
+        body = vscode_extensionquery_body(ext_id, tp)
+        j = post_json(sess, qurl, body, expected=(200,))
+        ok("POST /vscode/gallery/extensionquery", 200, qurl)
+    except Exception as exc:
+        bad("POST /vscode/gallery/extensionquery", 0, f"{qurl} :: {exc}")
+        return checks
+
+    # 2) PICK DOWNLOAD URL
+    try:
+        ver_found, src = pick_vsix_source_from_extensionquery(j, ext_id)
+        ok("extensionquery: picked files.source", 200, src)
+        if ver_found and ver_found != meta.version:
+            ok("extensionquery: version note", 200, f"found={ver_found}, expected={meta.version}")
+    except Exception as exc:
+        bad("extensionquery: pick files.source", 0, str(exc))
+        return checks
+
+    # 3) DOWNLOAD VIA MARKETPLACE URL
+    try:
+        b = download_bytes(sess, src, expected=(200,))
+        if len(b) < 4 or b[:2] != b"PK":
+            raise RuntimeError("downloaded bytes are not a VSIX/zip")
+        got = sha256_bytes(b)
+        if got != meta.sha256:
+            raise RuntimeError(f"sha256 mismatch: got {got} expected {meta.sha256}")
+        ok("Download VSIX via files.source + SHA256", 200, src)
+    except Exception as exc:
+        bad("Download VSIX via files.source + SHA256", 0, f"{src} :: {exc}")
+
+    # 4) LATEST (optional but should work in вашей реализации)
+    latest_url = f"{vscode}/gallery/{meta.publisher}/{meta.name}/latest?targetPlatform={tp}"
+    try:
+        j2 = get_json(sess, latest_url, expected=(200,))
+        got_id = str(j2.get("extensionId") or "").strip().lower()
+        want_id = str(ext_id or "").strip().lower()
+        if got_id != want_id:
+            raise RuntimeError(f"extensionId mismatch: got={j2.get('extensionId')} expected={ext_id}")
+
+        ok("GET /vscode/gallery/{ns}/{ext}/latest", 200, latest_url)
+    except Exception as exc:
+        bad("GET /vscode/gallery/{ns}/{ext}/latest", 0, f"{latest_url} :: {exc}")
+
+    # 5) UNPKG root listing (optional; если unpacked есть — будет 200, если нет — может быть 200 (zip listing) тоже)
+    unpkg_root = f"{vscode}/unpkg/{meta.publisher}/{meta.name}/{meta.version}/?targetPlatform={tp}"
+    try:
+        j3 = get_json(sess, unpkg_root, expected=(200,))
+        if not isinstance(j3, list):
+            raise RuntimeError("expected list response")
+        ok("GET /vscode/unpkg/.../", 200, unpkg_root)
+    except Exception as exc:
+        bad("GET /vscode/unpkg/.../", 0, f"{unpkg_root} :: {exc}")
+
+    return checks
+
+
 def main() -> int:
-    ap = argparse.ArgumentParser(description="VSIX downloader + OpenVSX-compatible API checker (no auth).")
+    ap = argparse.ArgumentParser(description="OpenVSX-like publish + VS Code Marketplace client flow checker.")
     ap.add_argument("--base-url", default=DEFAULT_BASE_URL, help=f"Target service base URL (default {DEFAULT_BASE_URL})")
     ap.add_argument("--publish-path", default=DEFAULT_PUBLISH_PATH, help=f"Publish path (default {DEFAULT_PUBLISH_PATH})")
     ap.add_argument("--workdir", default=".vsix_work", help="Working directory for downloads/cache")
@@ -466,20 +466,27 @@ def main() -> int:
             overall_ok = False
             continue
 
+        # publish (OpenVSX-style)
         try:
-            pub = publish_vsix(sess, base_url, publish_path, vsix_bytes)
-            for k in ("namespace", "name", "version", "files"):
-                if k not in pub:
-                    raise RuntimeError(f"Publish response missing '{k}': {pub}")
-            print(f"Published to {base_url}{publish_path}: {pub.get('namespace')}.{pub.get('name')}@{pub.get('version')}")
+            pub = publish_openvsx_like(
+                sess,
+                base_url,
+                publish_path,
+                vsix_bytes,
+                tp=meta.target_platform,
+                filename=meta.filename,
+            )
+            print(f"Published to {base_url}{publish_path}: {meta.publisher}.{meta.name}@{meta.version} tp={meta.target_platform}")
         except Exception as exc:
             eprint(f"ERROR publishing {meta.filename}: {exc}")
             overall_ok = False
             continue
 
-        checks = check_one(sess, base_url, meta, pub)
-        ok = print_report(meta, checks)
-        overall_ok = overall_ok and ok
+        # marketplace client flow
+        title = f"{meta.publisher}.{meta.name}@{meta.version} tp={meta.target_platform} sha256={meta.sha256[:12]}…"
+        checks = check_marketplace_flow(sess, base_url, meta)
+        ok_all = print_report(title + " :: Marketplace flow", checks)
+        overall_ok = overall_ok and ok_all
 
     return 0 if overall_ok else 1
 

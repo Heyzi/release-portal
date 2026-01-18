@@ -151,7 +151,6 @@
             overflow: hidden;
         }
 
-        /* Sidebar */
         .sidebar-head {
             padding: 10px 10px;
             border-bottom: 1px solid var(--border-soft);
@@ -160,7 +159,6 @@
             gap: 10px;
         }
 
-        /* Tabs (improved) */
         .category-tabs {
             display: grid;
             grid-auto-flow: column;
@@ -293,7 +291,6 @@
             flex: 0 0 auto;
         }
 
-        /* Main panel */
         .main {
             padding: 0;
         }
@@ -554,7 +551,6 @@
             margin: 0;
         }
 
-        /* Minimal markdown styling */
         .md p {
             margin: 0.4em 0;
         }
@@ -773,6 +769,9 @@
 
         const isAdminPage = window.location.pathname.startsWith('/admin');
 
+        let currentCategoryId = '';
+        let currentProjectId = '';
+
         if (isAdminPage && deleteProjectForm) {
             deleteProjectForm.style.display = '';
             deleteProjectForm.addEventListener('submit', function (e) {
@@ -830,6 +829,26 @@
             latestApiLink.setAttribute('href', href || '#');
         }
 
+        function splitExtensionProjectId(projectId) {
+            const raw = String(projectId || '');
+            const parts = raw.split('/');
+            const ns = (parts[0] || '').trim();
+            const ext = (parts[1] || '').trim();
+            if (!ns || !ext) return null;
+            return { ns, ext };
+        }
+
+        function extensionVsixUrl(ns, ext, version, tp) {
+            const nsN = String(ns || '').trim().toLowerCase();
+            const extN = String(ext || '').trim().toLowerCase();
+            const verN = String(version || '').trim();
+            const tpN = String(tp || 'universal').trim().toLowerCase() || 'universal';
+            return '/vscode/asset/' + encodeURIComponent(nsN)
+                + '/' + encodeURIComponent(extN)
+                + '/' + encodeURIComponent(verN)
+                + '/Microsoft.VisualStudio.Services.VSIXPackage?targetPlatform=' + encodeURIComponent(tpN);
+        }
+
         function updateLatestApiChip(categoryId, projectId) {
             if (!latestApiLink) return;
 
@@ -838,29 +857,31 @@
                 return;
             }
 
-            // OpenVSX-compatible latest for extensions:
-            // projectId for extensions is "ns/ext"
-            // OpenVSX expects extensionId as "ns.ext"
             if (categoryId === 'extensions') {
-                const extensionId = String(projectId).replace('/', '.');
-                const href = '/api/-/query?extensionId=' + encodeURIComponent(extensionId) + '&size=1&offset=0';
+                const p = splitExtensionProjectId(projectId);
+                if (!p) {
+                    _setLatestChip('#', '#');
+                    return;
+                }
+                const href = '/vscode/gallery/' + encodeURIComponent(p.ns) + '/' + encodeURIComponent(p.ext) + '/latest?targetPlatform=universal';
                 _setLatestChip(href, href);
                 return;
             }
 
-            // IDE latest (separate API surface under /api/ide/*)
             if (categoryId === 'ide') {
                 const href = '/api/ide/latest?sub_product_name=' + encodeURIComponent(projectId);
                 _setLatestChip(href, href);
                 return;
             }
 
-            // Fallback for other categories (keeps your existing convention if those endpoints exist)
             const href = '/' + categoryId + '/latest?sub_product_name=' + encodeURIComponent(projectId);
             _setLatestChip(href, href);
         }
 
         function setActiveProjectUi(categoryId, projectId) {
+            currentCategoryId = categoryId || '';
+            currentProjectId = projectId || '';
+
             projectItems.forEach(li => {
                 const cid = li.getAttribute('data-category-id');
                 const pid = li.getAttribute('data-project-id');
@@ -940,6 +961,11 @@
             return n;
         }
 
+        function normalizePlatformFromAsset(a) {
+            const platform = (a && a.platform) ? String(a.platform) : '';
+            return platform ? platform : 'universal';
+        }
+
         function renderReleases(releases) {
             releaseList.innerHTML = '';
 
@@ -956,6 +982,9 @@
                 const tb = (b && b.tag) ? String(b.tag) : '';
                 return ta.localeCompare(tb, undefined, { numeric: true, sensitivity: 'base' });
             });
+
+            const isExtensions = (currentCategoryId === 'extensions');
+            const extProject = isExtensions ? splitExtensionProjectId(currentProjectId) : null;
 
             sorted.forEach(r => {
                 const tag = (r && r.tag) ? String(r.tag) : '';
@@ -1045,40 +1074,87 @@
 
                 if (assets.length > 0) {
                     const ul = el('ul', { className: 'asset-list' }, []);
-                    assets.forEach(a => {
-                        const name = a && a.name ? String(a.name) : '';
-                        const href = a && a.href ? String(a.href) : '#';
-                        const size = a && a.size ? String(a.size) : '';
-                        const platform = a && a.platform ? String(a.platform) : '';
 
-                        const link = el('a', { href: href, title: name, text: name });
+                    if (isExtensions && extProject && tag) {
+                        const byTp = new Map();
 
-                        const nameCell = el('span', { className: 'asset-name' }, [link]);
-                        const platformCell = el('span', { className: 'asset-platform', text: platform || '' });
-                        const sizeCell = el('span', { className: 'asset-size', text: size });
+                        assets.forEach(a => {
+                            const name = a && a.name ? String(a.name) : '';
+                            if (name.toLowerCase() === 'extension.vsix') {
+                                const tp = normalizePlatformFromAsset(a);
+                                byTp.set(tp, a);
+                                return;
+                            }
+                            const tp = normalizePlatformFromAsset(a);
+                            if (!byTp.has(tp)) byTp.set(tp, a);
+                        });
 
-                        const assetChildren = [nameCell, platformCell, sizeCell];
+                        const tps = Array.from(byTp.keys()).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 
-                        if (isAdminPage) {
-                            const delForm = el('form', { method: 'post', action: '/admin/delete-asset', className: 'inline-form asset-delete' }, []);
-                            delForm.addEventListener('submit', function (e) {
-                                const ok = confirm('Delete asset ' + name + '?');
-                                if (!ok) e.preventDefault();
-                            });
-                            delForm.appendChild(el('input', { type: 'hidden', name: 'category', value: getActiveCategoryId() }));
-                            delForm.appendChild(el('input', { type: 'hidden', name: 'project', value: getActiveProjectId() }));
-                            delForm.appendChild(el('input', { type: 'hidden', name: 'version', value: tag }));
-                            delForm.appendChild(el('input', { type: 'hidden', name: 'platform', value: platform }));
-                            delForm.appendChild(el('input', { type: 'hidden', name: 'name', value: name }));
-                            delForm.appendChild(el('button', { type: 'submit', className: 'btn btn-danger btn-small', text: 'Delete' }));
-                            assetChildren.push(delForm);
-                        }
+                        tps.forEach(tp => {
+                            const href = extensionVsixUrl(extProject.ns, extProject.ext, tag, tp);
+                            const link = el('a', { href: href, title: 'Download ' + tp, text: tp });
 
-                        ul.appendChild(el('li', { className: 'asset' }, assetChildren));
-                    });
+                            const nameCell = el('span', { className: 'asset-name' }, [link]);
+                            const platformCell = el('span', { className: 'asset-platform', text: '' });
+                            const sizeCell = el('span', { className: 'asset-size', text: '' });
+
+                            const assetChildren = [nameCell, platformCell, sizeCell];
+
+                            if (isAdminPage) {
+                                const a0 = byTp.get(tp);
+                                const delForm = el('form', { method: 'post', action: '/admin/delete-asset', className: 'inline-form asset-delete' }, []);
+                                delForm.addEventListener('submit', function (e) {
+                                    const ok = confirm('Delete extension for ' + tp + '?');
+                                    if (!ok) e.preventDefault();
+                                });
+                                delForm.appendChild(el('input', { type: 'hidden', name: 'category', value: getActiveCategoryId() }));
+                                delForm.appendChild(el('input', { type: 'hidden', name: 'project', value: getActiveProjectId() }));
+                                delForm.appendChild(el('input', { type: 'hidden', name: 'version', value: tag }));
+                                delForm.appendChild(el('input', { type: 'hidden', name: 'platform', value: tp }));
+                                delForm.appendChild(el('input', { type: 'hidden', name: 'name', value: (a0 && a0.name) ? String(a0.name) : 'extension.vsix' }));
+                                delForm.appendChild(el('button', { type: 'submit', className: 'btn btn-danger btn-small', text: 'Delete' }));
+                                assetChildren.push(delForm);
+                            }
+
+                            ul.appendChild(el('li', { className: 'asset' }, assetChildren));
+                        });
+                    } else {
+                        assets.forEach(a => {
+                            const name = a && a.name ? String(a.name) : '';
+                            const href = a && a.href ? String(a.href) : '#';
+                            const size = a && a.size ? String(a.size) : '';
+                            const platform = a && a.platform ? String(a.platform) : '';
+
+                            const link = el('a', { href: href, title: name, text: name });
+
+                            const nameCell = el('span', { className: 'asset-name' }, [link]);
+                            const platformCell = el('span', { className: 'asset-platform', text: platform || '' });
+                            const sizeCell = el('span', { className: 'asset-size', text: size });
+
+                            const assetChildren = [nameCell, platformCell, sizeCell];
+
+                            if (isAdminPage) {
+                                const delForm = el('form', { method: 'post', action: '/admin/delete-asset', className: 'inline-form asset-delete' }, []);
+                                delForm.addEventListener('submit', function (e) {
+                                    const ok = confirm('Delete asset ' + name + '?');
+                                    if (!ok) e.preventDefault();
+                                });
+                                delForm.appendChild(el('input', { type: 'hidden', name: 'category', value: getActiveCategoryId() }));
+                                delForm.appendChild(el('input', { type: 'hidden', name: 'project', value: getActiveProjectId() }));
+                                delForm.appendChild(el('input', { type: 'hidden', name: 'version', value: tag }));
+                                delForm.appendChild(el('input', { type: 'hidden', name: 'platform', value: platform }));
+                                delForm.appendChild(el('input', { type: 'hidden', name: 'name', value: name }));
+                                delForm.appendChild(el('button', { type: 'submit', className: 'btn btn-danger btn-small', text: 'Delete' }));
+                                assetChildren.push(delForm);
+                            }
+
+                            ul.appendChild(el('li', { className: 'asset' }, assetChildren));
+                        });
+                    }
 
                     article.appendChild(el('div', { className: 'assets' }, [
-                        el('div', { className: 'assets-head', text: 'Assets' }),
+                        el('div', { className: 'assets-head', text: (isExtensions ? 'Platforms' : 'Assets') }),
                         ul
                     ]));
                 }

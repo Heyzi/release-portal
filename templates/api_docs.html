@@ -164,6 +164,22 @@
             font-size: 13px;
             color: var(--muted);
         }
+
+        .copy-btn {
+            border: 1px solid var(--border);
+            background: #f6f8fa;
+            color: #24292f;
+            border-radius: 8px;
+            padding: 4px 8px;
+            font-size: 11px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .copy-btn:hover {
+            border-color: var(--accent);
+            background: #eef4ff;
+        }
     </style>
 </head>
 
@@ -200,9 +216,14 @@
                 </thead>
                 <tbody id="tbody">
                     {% for r in rows %}
-                    <tr data-text="{{ (r.methods_str ~ ' ' ~ r.path ~ ' ' ~ r.endpoint)|lower }}">
+                    <tr data-text="{{ (r.methods_str ~ ' ' ~ r.path ~ ' ' ~ r.endpoint)|lower }}"
+                        data-path="{{ r.path }}" data-methods="{{ r.methods_str }}">
                         <td><span class="pill">{{ r.methods_str }}</span></td>
-                        <td class="mono">{{ r.path }}</td>
+                        <td class="mono">
+                            <a class="mono api-link" href="{{ r.path }}" title="Open {{ r.path }}">{{ r.path }}</a>
+                            <button class="copy-btn" type="button" data-copy="{{ r.path }}"
+                                title="Copy path">Copy</button>
+                        </td>
                         <td class="mono">{{ r.endpoint }}</td>
                     </tr>
                     {% endfor %}
@@ -219,7 +240,7 @@
         const tbody = document.getElementById('tbody');
 
         function apply() {
-            const v = (q.value || '').trim().toLowerCase();
+            const v = (q && q.value ? q.value : '').trim().toLowerCase();
             if (!tbody) return;
 
             const rows = Array.from(tbody.querySelectorAll('tr'));
@@ -230,7 +251,47 @@
             });
         }
 
+        async function copyText(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                return true;
+            } catch (_) {
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.style.position = 'fixed';
+                    ta.style.left = '-9999px';
+                    ta.style.top = '0';
+                    document.body.appendChild(ta);
+                    ta.focus();
+                    ta.select();
+                    const ok = document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    return !!ok;
+                } catch (_) {
+                    return false;
+                }
+            }
+        }
+
+        function bindCopyButtons() {
+            if (!tbody) return;
+            const btns = Array.from(tbody.querySelectorAll('button.copy-btn'));
+            btns.forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const path = btn.getAttribute('data-copy') || '';
+                    if (!path) return;
+                    const ok = await copyText(path);
+                    const old = btn.textContent;
+                    btn.textContent = ok ? 'Copied' : 'Copy failed';
+                    setTimeout(() => { btn.textContent = old; }, 900);
+                });
+            });
+        }
+
         if (q) q.addEventListener('input', apply);
+
+        bindCopyButtons();
     </script>
 </body>
 
