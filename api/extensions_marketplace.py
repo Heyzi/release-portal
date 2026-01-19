@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import mimetypes
 import re
 import time
@@ -11,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import Blueprint, Response, abort, jsonify, request, send_file
+from flask import Blueprint, Response, abort, jsonify, request, send_file, g
 
 from services.extensions_registry import ALLOWED_PLATFORMS, REGISTRY
 from services.releases import RELEASES_ROOT, UNIVERSAL_PLATFORM, get_latest_version_from_symlinks
@@ -43,20 +44,12 @@ FILTER_TARGET = 8
 FILTER_SEARCH_TEXT = 10
 
 _ALLOWED_ORIGINS = {"vscode-file://vscode-app"}
-
-_BASE_ALLOWED_HEADERS = {
-    "accept",
-    "authorization",
-    "content-type",
-    "origin",
-    "x-request-id",
-}
-
 _ALLOWED_METHODS = "GET, POST, OPTIONS"
+
+_log = logging.getLogger("marketplace")
 
 
 def _releases_ext_root() -> Path:
-
     root = Path(RELEASES_ROOT).expanduser()
 
     cand_direct = root / "extensions"
@@ -73,7 +66,6 @@ def _releases_ext_root() -> Path:
             return cand_parent_direct
 
     return cand_direct
-
 
 
 def _ext_dir(ns: str, ext: str, ver: str, tp: str) -> Path:
@@ -97,14 +89,6 @@ def _get_cors_origin() -> str:
     return origin if origin in _ALLOWED_ORIGINS else ""
 
 
-def _is_allowed_header(name_lc: str) -> bool:
-    if not name_lc:
-        return False
-    if name_lc in _BASE_ALLOWED_HEADERS:
-        return True
-    return name_lc.startswith("x-market-")
-
-
 def _apply_cors_headers(resp: Response) -> Response:
     origin = _get_cors_origin()
     if not origin:
@@ -117,14 +101,9 @@ def _apply_cors_headers(resp: Response) -> Response:
 
     req_hdrs = (request.headers.get("Access-Control-Request-Headers") or "").strip()
     if req_hdrs:
-        want: List[str] = []
-        for h in req_hdrs.split(","):
-            hn = h.strip().lower()
-            if _is_allowed_header(hn):
-                want.append(hn)
-        resp.headers["Access-Control-Allow-Headers"] = ", ".join(sorted(set(want))) if want else ", ".join(sorted(_BASE_ALLOWED_HEADERS))
+        resp.headers["Access-Control-Allow-Headers"] = req_hdrs
     else:
-        resp.headers["Access-Control-Allow-Headers"] = ", ".join(sorted(_BASE_ALLOWED_HEADERS))
+        resp.headers["Access-Control-Allow-Headers"] = "*"
 
     return resp
 
@@ -593,7 +572,8 @@ def extensionquery() -> Response:
 
     param = request.get_json(silent=True) or {}
     filters = param.get("filters") or []
-    flags = int(param.get("flags") or 0)
+    flags_in = int(param.get("flags") or 0)
+    flags = flags_in
 
     page_number = 1
     page_size = 20
@@ -625,8 +605,29 @@ def extensionquery() -> Response:
                 if ft == FILTER_TARGET and isinstance(val, str) and val.strip():
                     tp_req = val.strip()
 
+    is_specific = bool(ext_id)
+
+    if is_specific:
+        flags = flags & (~FLAG_INCLUDE_LATEST_VERSION_ONLY)
+        flags |= (FLAG_INCLUDE_VERSIONS | FLAG_INCLUDE_FILES | FLAG_INCLUDE_ASSET_URI | FLAG_INCLUDE_VERSION_PROPERTIES)
+
     tp_eff = _choose_tp_for_request(tp_req)
     offset = max(0, page_number - 1) * max(1, page_size)
+
+    if _log.isEnabledFor(logging.INFO):
+        _log.info(
+            "extensionquery reqId=%s specific=%s ext_id=%s search=%s tp_req=%s tp_eff=%s flags_in=%s flags_eff=%s page=%s size=%s",
+            getattr(g, "request_id", None),
+            is_specific,
+            ext_id,
+            search_text,
+            tp_req,
+            tp_eff,
+            flags_in,
+            flags,
+            page_number,
+            page_size,
+        )
 
     extensions: List[Dict[str, Any]] = []
     total = 0
@@ -648,7 +649,22 @@ def extensionquery() -> Response:
                 rows = [r for r in rows if r.target_platform in {tp_eff, "universal"}]
             total = 1 if rows else 0
             if rows:
-                extensions = [_vscode_extension_json(ns, ext, rows, flags, tp_eff)]
+                e = _vscode_extension_json(ns, ext, rows, flags, tp_eff)
+                extensions = [e]
+                if _log.isEnabledFor(logging.INFO):
+                    vcnt = 0
+                    try:
+                        vcnt = len(e.get("versions") or [])
+                    except Exception:
+                        vcnt = -1
+                    _log.info(
+                        "extensionquery respId=%s ext=%s.%s rows=%s versions=%s",
+                        getattr(g, "request_id", None),
+                        ns,
+                        ext,
+                        len(rows),
+                        vcnt,
+                    )
     else:
         pairs = REGISTRY.list_pairs(search_text=search_text)
         total = len(pairs)

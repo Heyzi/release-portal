@@ -6,20 +6,41 @@
     <meta charset="utf-8">
     <title>{{ title }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
 
     <style>
+        /* =========================
+           Theme variables
+           Default = DARK
+           ========================= */
         :root {
+            --bg: #0d1117;
+            --panel: #161b22;
+            --panel-2: #0f1520;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --border: #30363d;
+            --border-soft: #21262d;
+            --accent: #2f81f7;
+            --shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+            --radius: 10px;
+            --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            --focus-ring: rgba(47, 129, 247, 0.35);
+        }
+
+        /* LIGHT override (old palette) */
+        :root[data-theme="light"] {
             --bg: #f6f8fa;
             --panel: #ffffff;
+            --panel-2: #f6f8fa;
             --text: #1f2328;
             --muted: #57606a;
             --border: #d0d7de;
             --border-soft: #eaeef2;
             --accent: #0969da;
             --shadow: 0 1px 0 rgba(27, 31, 36, 0.04);
-            --radius: 10px;
-            --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-            --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            --focus-ring: rgba(9, 105, 218, 0.25);
         }
 
         * {
@@ -98,7 +119,7 @@
 
         .control {
             border: 1px solid var(--border);
-            background: #fff;
+            background: var(--panel);
             color: var(--text);
             border-radius: 8px;
             padding: 6px 10px;
@@ -108,9 +129,13 @@
             max-width: 100%;
         }
 
+        .control::placeholder {
+            color: var(--muted);
+        }
+
         .control:focus {
             border-color: var(--accent);
-            box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
+            box-shadow: 0 0 0 3px var(--focus-ring);
         }
 
         .meta {
@@ -129,7 +154,7 @@
 
         thead th {
             text-align: left;
-            background: #f6f8fa;
+            background: var(--panel-2);
             border-bottom: 1px solid var(--border-soft);
             padding: 10px 12px;
             color: var(--muted);
@@ -154,7 +179,7 @@
             font-size: 11px;
             border: 1px solid var(--border);
             color: var(--muted);
-            background: #fff;
+            background: var(--panel);
             font-family: var(--mono);
             white-space: nowrap;
         }
@@ -167,8 +192,8 @@
 
         .copy-btn {
             border: 1px solid var(--border);
-            background: #f6f8fa;
-            color: #24292f;
+            background: var(--panel-2);
+            color: var(--text);
             border-radius: 8px;
             padding: 4px 8px;
             font-size: 11px;
@@ -178,7 +203,21 @@
 
         .copy-btn:hover {
             border-color: var(--accent);
-            background: #eef4ff;
+            background: rgba(47, 129, 247, 0.15);
+        }
+
+        .btn {
+            border: 1px solid var(--border);
+            background: var(--panel-2);
+            color: var(--text);
+            border-radius: 8px;
+            padding: 4px 8px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            border-color: var(--accent);
         }
     </style>
 </head>
@@ -195,6 +234,8 @@
                 <a href="/admin">Admin UI</a>
                 <a href="/api">API</a>
                 <a href="/admin/help">Admin API</a>
+
+                <button id="themeToggle" type="button" class="btn">Light</button>
             </div>
         </header>
 
@@ -216,13 +257,11 @@
                 </thead>
                 <tbody id="tbody">
                     {% for r in rows %}
-                    <tr data-text="{{ (r.methods_str ~ ' ' ~ r.path ~ ' ' ~ r.endpoint)|lower }}"
-                        data-path="{{ r.path }}" data-methods="{{ r.methods_str }}">
+                    <tr data-text="{{ (r.methods_str ~ ' ' ~ r.path ~ ' ' ~ r.endpoint)|lower }}">
                         <td><span class="pill">{{ r.methods_str }}</span></td>
                         <td class="mono">
-                            <a class="mono api-link" href="{{ r.path }}" title="Open {{ r.path }}">{{ r.path }}</a>
-                            <button class="copy-btn" type="button" data-copy="{{ r.path }}"
-                                title="Copy path">Copy</button>
+                            <a class="mono" href="{{ r.path }}">{{ r.path }}</a>
+                            <button class="copy-btn" type="button" data-copy="{{ r.path }}">Copy</button>
                         </td>
                         <td class="mono">{{ r.endpoint }}</td>
                     </tr>
@@ -236,6 +275,34 @@
     </div>
 
     <script>
+        /* =========================
+           Theme (default = dark)
+           ========================= */
+        const themeToggle = document.getElementById('themeToggle');
+
+        function applyTheme(theme) {
+            const t = (theme === 'light') ? 'light' : 'dark';
+            if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+            else document.documentElement.removeAttribute('data-theme');
+
+            try { localStorage.setItem('theme', t); } catch (_) { }
+
+            if (themeToggle) themeToggle.textContent = (t === 'light') ? 'Dark' : 'Light';
+        }
+
+        (function initTheme() {
+            let saved = '';
+            try { saved = localStorage.getItem('theme') || ''; } catch (_) { }
+            applyTheme(saved === 'light' ? 'light' : 'dark');
+        })();
+
+        if (themeToggle) {
+            themeToggle.addEventListener('click', () => {
+                const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+                applyTheme(isLight ? 'dark' : 'light');
+            });
+        }
+
         const q = document.getElementById('q');
         const tbody = document.getElementById('tbody');
 
@@ -246,8 +313,7 @@
             const rows = Array.from(tbody.querySelectorAll('tr'));
             rows.forEach(tr => {
                 const t = tr.getAttribute('data-text') || '';
-                const show = !v || t.includes(v);
-                tr.style.display = show ? '' : 'none';
+                tr.style.display = (!v || t.includes(v)) ? '' : 'none';
             });
         }
 
@@ -261,9 +327,7 @@
                     ta.value = text;
                     ta.style.position = 'fixed';
                     ta.style.left = '-9999px';
-                    ta.style.top = '0';
                     document.body.appendChild(ta);
-                    ta.focus();
                     ta.select();
                     const ok = document.execCommand('copy');
                     document.body.removeChild(ta);
@@ -274,24 +338,20 @@
             }
         }
 
-        function bindCopyButtons() {
-            if (!tbody) return;
-            const btns = Array.from(tbody.querySelectorAll('button.copy-btn'));
-            btns.forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    const path = btn.getAttribute('data-copy') || '';
-                    if (!path) return;
-                    const ok = await copyText(path);
-                    const old = btn.textContent;
-                    btn.textContent = ok ? 'Copied' : 'Copy failed';
-                    setTimeout(() => { btn.textContent = old; }, 900);
-                });
+        if (tbody) {
+            tbody.addEventListener('click', async (e) => {
+                const btn = e.target.closest('button[data-copy]');
+                if (!btn) return;
+                const path = btn.getAttribute('data-copy') || '';
+                if (!path) return;
+                const ok = await copyText(path);
+                const old = btn.textContent;
+                btn.textContent = ok ? 'Copied' : 'Copy failed';
+                setTimeout(() => { btn.textContent = old; }, 900);
             });
         }
 
         if (q) q.addEventListener('input', apply);
-
-        bindCopyButtons();
     </script>
 </body>
 

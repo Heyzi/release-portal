@@ -6,11 +6,45 @@
     <meta charset="utf-8">
     <title>Release manager</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
 
     <style>
+        /* =========================
+           Theme variables
+           Default = DARK
+           ========================= */
         :root {
+            --bg: #0d1117;
+            --panel: #161b22;
+            --panel-2: #0f1520;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --border: #30363d;
+            --border-soft: #21262d;
+
+            --accent: #2f81f7;
+            --accent-soft: rgba(47, 129, 247, 0.18);
+
+            --success: #3fb950;
+            --success-soft: rgba(63, 185, 80, 0.18);
+
+            --danger: #f85149;
+            --danger-soft: rgba(248, 81, 73, 0.18);
+
+            --shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+            --radius: 10px;
+
+            --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+            --focus-ring: rgba(47, 129, 247, 0.35);
+        }
+
+        /* LIGHT override (your old palette) */
+        :root[data-theme="light"] {
             --bg: #f6f8fa;
             --panel: #ffffff;
+            --panel-2: #f6f8fa;
             --text: #1f2328;
             --muted: #57606a;
             --border: #d0d7de;
@@ -26,10 +60,8 @@
             --danger-soft: #ffebe9;
 
             --shadow: 0 1px 0 rgba(27, 31, 36, 0.04);
-            --radius: 10px;
 
-            --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-            --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            --focus-ring: rgba(9, 105, 218, 0.25);
         }
 
         * {
@@ -164,7 +196,7 @@
             grid-auto-flow: column;
             grid-auto-columns: 1fr;
             gap: 0;
-            background: #f6f8fa;
+            background: var(--panel-2);
             border: 1px solid var(--border);
             border-radius: 12px;
             padding: 4px;
@@ -200,7 +232,7 @@
         }
 
         .tab:hover {
-            background: #eef4ff;
+            background: var(--accent-soft);
             color: var(--text);
         }
 
@@ -210,19 +242,23 @@
 
         .tab:focus-visible {
             border-color: var(--accent);
-            box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
+            box-shadow: 0 0 0 3px var(--focus-ring);
         }
 
         .tab.active {
-            background: #fff;
-            border-color: rgba(9, 105, 218, 0.35);
+            background: var(--panel);
+            border-color: rgba(47, 129, 247, 0.35);
             color: var(--text);
             font-weight: 650;
         }
 
+        :root[data-theme="light"] .tab.active {
+            border-color: rgba(9, 105, 218, 0.35);
+        }
+
         .control {
             border: 1px solid var(--border);
-            background: #fff;
+            background: var(--panel);
             color: var(--text);
             border-radius: 8px;
             padding: 6px 10px;
@@ -231,9 +267,13 @@
             width: 100%;
         }
 
+        .control::placeholder {
+            color: color-mix(in srgb, var(--muted) 80%, transparent);
+        }
+
         .control:focus {
             border-color: var(--accent);
-            box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
+            box-shadow: 0 0 0 3px var(--focus-ring);
         }
 
         .projects {
@@ -254,18 +294,22 @@
             padding: 10px 10px;
             border: 1px solid var(--border-soft);
             border-radius: 10px;
-            background: #fff;
+            background: var(--panel);
         }
 
         .project-item a:hover {
             text-decoration: none;
             border-color: var(--border);
-            background: #fbfcfe;
+            background: color-mix(in srgb, var(--panel) 80%, var(--bg));
         }
 
         .project-item.active a {
-            border-color: rgba(9, 105, 218, 0.35);
+            border-color: rgba(47, 129, 247, 0.35);
             background: var(--accent-soft);
+        }
+
+        :root[data-theme="light"] .project-item.active a {
+            border-color: rgba(9, 105, 218, 0.35);
         }
 
         .project-name {
@@ -287,7 +331,7 @@
             font-size: 11px;
             border: 1px solid var(--border);
             color: var(--muted);
-            background: #fff;
+            background: var(--panel);
             flex: 0 0 auto;
         }
 
@@ -329,8 +373,8 @@
 
         .btn {
             border: 1px solid var(--border);
-            background: #f6f8fa;
-            color: #24292f;
+            background: var(--panel-2);
+            color: var(--text);
             border-radius: 8px;
             padding: 6px 10px;
             font-size: 12px;
@@ -345,7 +389,7 @@
 
         .btn:hover {
             border-color: var(--accent);
-            background: #eef4ff;
+            background: color-mix(in srgb, var(--panel-2) 70%, var(--accent-soft));
         }
 
         .btn-primary {
@@ -355,26 +399,27 @@
         }
 
         .btn-primary:hover {
-            border-color: #0550ae;
-            background: #0550ae;
+            border-color: color-mix(in srgb, var(--accent) 80%, #000);
+            background: color-mix(in srgb, var(--accent) 80%, #000);
         }
 
         .btn-danger {
-            border-color: rgba(207, 34, 46, 0.45);
+            border-color: color-mix(in srgb, var(--danger) 45%, transparent);
             background: var(--danger-soft);
             color: var(--danger);
         }
 
         .btn-danger:hover {
             border-color: var(--danger);
-            background: #ffd7d5;
+            background: color-mix(in srgb, var(--danger-soft) 75%, var(--danger));
+            color: var(--text);
         }
 
         .btn[disabled] {
             opacity: 0.55;
             cursor: default;
             border-color: var(--border);
-            background: #f6f8fa;
+            background: var(--panel-2);
             color: var(--muted);
         }
 
@@ -394,7 +439,7 @@
         .release {
             border: 1px solid var(--border);
             border-radius: var(--radius);
-            background: #fff;
+            background: var(--panel);
             overflow: hidden;
         }
 
@@ -424,7 +469,7 @@
             padding: 2px 8px;
             border-radius: 999px;
             border: 1px solid var(--border);
-            background: #fff;
+            background: var(--panel);
             line-height: 1.2;
         }
 
@@ -435,7 +480,7 @@
             padding: 2px 8px;
             border-radius: 999px;
             font-size: 11px;
-            border: 1px solid rgba(26, 127, 55, 0.35);
+            border: 1px solid color-mix(in srgb, var(--success) 35%, transparent);
             color: var(--success);
             background: var(--success-soft);
             line-height: 1.2;
@@ -467,13 +512,14 @@
             border-radius: 10px;
             overflow: hidden;
             margin: 10px 12px 12px;
+            background: var(--panel);
         }
 
         .assets-head {
             padding: 8px 10px;
             font-size: 12px;
             color: var(--muted);
-            background: #f6f8fa;
+            background: var(--panel-2);
             border-bottom: 1px solid var(--border-soft);
         }
 
@@ -542,7 +588,7 @@
             padding: 10px 12px;
             border-radius: 8px;
             border: 1px solid var(--border-soft);
-            background: #f6f8fa;
+            background: var(--panel-2);
             font-size: 12px;
             line-height: 1.5;
         }
@@ -585,7 +631,7 @@
         .md code {
             font-family: var(--mono);
             font-size: 11px;
-            background: #fff;
+            background: var(--panel);
             border: 1px solid var(--border-soft);
             border-radius: 6px;
             padding: 0.1em 0.35em;
@@ -594,7 +640,7 @@
         .md pre {
             overflow: auto;
             padding: 10px;
-            background: #fff;
+            background: var(--panel);
             border: 1px solid var(--border-soft);
             border-radius: 10px;
         }
@@ -629,7 +675,7 @@
         }
 
         .md thead th {
-            background: #fff;
+            background: var(--panel);
         }
 
         .md hr {
@@ -674,6 +720,11 @@
                 <div class="mini-link">
                     <span class="mono">Latest:</span>
                     <a id="latestApiLink" href="#" class="mono">/api/ide/latest?sub_product_name=product</a>
+                </div>
+
+                <div class="mini-link" style="gap:10px;">
+                    <span class="mono">Theme:</span>
+                    <button id="themeToggle" type="button" class="btn btn-small">Light</button>
                 </div>
             </div>
 
@@ -767,10 +818,45 @@
         const categoryTabs = document.getElementById('categoryTabs');
         const projectList = document.getElementById('projectList');
 
+        const themeToggle = document.getElementById('themeToggle');
+
         const isAdminPage = window.location.pathname.startsWith('/admin');
 
         let currentCategoryId = '';
         let currentProjectId = '';
+
+        /* =========================
+           Theme (default = dark)
+           ========================= */
+        function applyTheme(theme) {
+            const t = (theme === 'light') ? 'light' : 'dark';
+            if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+            else document.documentElement.removeAttribute('data-theme');
+
+            try { localStorage.setItem('theme', t); } catch (_) { }
+
+            if (themeToggle) {
+                themeToggle.textContent = (t === 'light') ? 'Dark' : 'Light';
+                themeToggle.setAttribute('aria-label', (t === 'light') ? 'Switch to dark theme' : 'Switch to light theme');
+                themeToggle.setAttribute('title', (t === 'light') ? 'Switch to dark theme' : 'Switch to light theme');
+            }
+        }
+
+        function initTheme() {
+            let saved = '';
+            try { saved = localStorage.getItem('theme') || ''; } catch (_) { saved = ''; }
+            // Default: DARK (when saved is empty or invalid)
+            applyTheme(saved === 'light' ? 'light' : 'dark');
+        }
+
+        if (themeToggle) {
+            themeToggle.addEventListener('click', () => {
+                const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+                applyTheme(isLight ? 'dark' : 'light');
+            });
+        }
+
+        initTheme();
 
         if (isAdminPage && deleteProjectForm) {
             deleteProjectForm.style.display = '';

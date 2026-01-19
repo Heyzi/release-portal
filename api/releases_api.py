@@ -1,13 +1,12 @@
-# releases_api.py
+# api/releases_api.py
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Dict, List
 
-from flask import Blueprint, abort, jsonify, render_template, request, send_from_directory
+from flask import Blueprint, abort, current_app, jsonify, render_template, request, send_from_directory
 
 from services.releases import RELEASES_ROOT, build_projects_only, build_releases_for_project, is_safe_relpath
-
 
 bp_releases = Blueprint("releases_api", __name__)
 
@@ -30,7 +29,7 @@ def _iter_endpoints(app, prefixes: List[str]) -> List[Dict[str, Any]]:
 @bp_releases.get("/api")
 def api_docs():
     # Render simple API docs page
-    rows = _iter_endpoints(bp_releases._get_current_object().app, prefixes=["/api"])  # type: ignore[attr-defined]
+    rows = _iter_endpoints(current_app, prefixes=["/api"])
     return render_template(
         "api_docs.html",
         title="API endpoints",
@@ -88,4 +87,13 @@ def api_releases():
         )
 
     rels = build_releases_for_project(category, project)
-    return jsonify({"state": True, "status": "success", "data": {"category": category, "project": project, "releases": rels}}), 200
+    return (
+        jsonify(
+            {
+                "state": True,
+                "status": "success",
+                "data": {"category": category, "project": project, "releases": rels},
+            }
+        ),
+        200,
+    )

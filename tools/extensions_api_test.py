@@ -314,7 +314,12 @@ def vscode_extensionquery_body(ext_id: str, tp: str) -> Dict[str, Any]:
     }
 
 
-def pick_vsix_source_from_extensionquery(resp_json: Dict[str, Any], ext_id: str) -> Tuple[str, str]:
+def pick_vsix_source_from_extensionquery(
+    resp_json: Dict[str, Any],
+    ext_id: str,
+    *,
+    prefer_version: Optional[str] = None,
+) -> Tuple[str, str]:
     results = resp_json.get("results")
     if not isinstance(results, list) or not results:
         raise RuntimeError("extensionquery: missing results")
@@ -344,18 +349,37 @@ def pick_vsix_source_from_extensionquery(resp_json: Dict[str, Any], ext_id: str)
     if not isinstance(versions, list) or not versions:
         raise RuntimeError("extensionquery: missing versions")
 
+    def extract_first_source(v: Dict[str, Any]) -> Optional[str]:
+        files = v.get("files")
+        if not isinstance(files, list):
+            return None
+        for f in files:
+            if isinstance(f, dict) and isinstance(f.get("source"), str) and f["source"]:
+                return f["source"]
+        return None
+
+    # 1) Prefer an exact version match if requested
+    if prefer_version:
+        pv = str(prefer_version).strip()
+        for v in versions:
+            if not isinstance(v, dict):
+                continue
+            ver = str(v.get("version") or "").strip()
+            if ver == pv:
+                src = extract_first_source(v)
+                if src:
+                    return ver, src
+
+    # 2) Fallback: first available source (usually latest)
     for v in versions:
         if not isinstance(v, dict):
             continue
-        ver = str(v.get("version") or "")
-        files = v.get("files")
-        if isinstance(files, list):
-            for f in files:
-                if isinstance(f, dict) and isinstance(f.get("source"), str) and f["source"]:
-                    return ver, f["source"]
+        ver = str(v.get("version") or "").strip()
+        src = extract_first_source(v)
+        if src:
+            return ver, src
 
     raise RuntimeError("extensionquery: no versions[].files[].source found")
-
 
 def print_report(title: str, checks: List[Check]) -> bool:
     print(f"\n--- {title} ---")
@@ -393,7 +417,7 @@ def check_marketplace_flow(sess: requests.Session, base_url: str, meta: VsixMeta
 
     # 2) PICK DOWNLOAD URL
     try:
-        ver_found, src = pick_vsix_source_from_extensionquery(j, ext_id)
+        ver_found, src = pick_vsix_source_from_extensionquery(j, ext_id, prefer_version=meta.version)
         ok("extensionquery: picked files.source", 200, src)
         if ver_found and ver_found != meta.version:
             ok("extensionquery: version note", 200, f"found={ver_found}, expected={meta.version}")

@@ -1,26 +1,24 @@
+# portal.py
 from __future__ import annotations
 
 import shutil
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from flask import Blueprint, abort, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, redirect, render_template, request, url_for
 
 # single source of truth for docs endpoint enumeration
 from api.releases_api import _iter_endpoints
 
-
 from services.releases import (
     RELEASES_ROOT,
     build_projects_only,
-    build_releases_for_project,
     clear_dir_files_only,
     get_latest_version_from_symlinks,
     list_versions,
     set_latest_atomic,
     unlink_if_exists,
 )
-
 
 bp_portal = Blueprint("portal", __name__)
 
@@ -36,7 +34,9 @@ def render_portal(is_admin: bool):
         selected_category = categories[0]["id"]
 
     selected_project_id: Optional[str] = (request.args.get("project") or "").strip()
-    selected_cat_projects: List[Dict[str, Any]] = next((c["projects"] for c in categories if c["id"] == selected_category), [])
+    selected_cat_projects: List[Dict[str, Any]] = next(
+        (c["projects"] for c in categories if c["id"] == selected_category), []
+    )
     if selected_project_id and all(p["id"] != selected_project_id for p in selected_cat_projects):
         selected_project_id = None
     if not selected_project_id and selected_cat_projects:
@@ -72,7 +72,7 @@ def admin():
 @bp_portal.get("/admin/help")
 def admin_docs():
     # Render admin endpoints page
-    rows = _iter_endpoints(bp_portal._get_current_object().app, prefixes=["/admin"])  # type: ignore[attr-defined]
+    rows = _iter_endpoints(current_app, prefixes=["/admin"])
     return render_template(
         "api_docs.html",
         title="Admin endpoints",
