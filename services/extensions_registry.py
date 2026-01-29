@@ -33,7 +33,7 @@ def _ext_root() -> Path:
 
 def _db_path() -> Path:
     # SQLite index path
-    return Path(releases_service.RELEASES_ROOT) / "extensions_index.sqlite"
+    return Path(releases_service.RELEASES_ROOT) / "_indexes" / "extensions_index.sqlite"
 
 
 def _normalize_tp(tp: Optional[str]) -> str:

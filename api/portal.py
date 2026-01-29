@@ -20,7 +20,26 @@ from services.releases import (
     unlink_if_exists,
 )
 
+# Indexes
+from services.extensions_registry import REGISTRY
+from services.ide_registry import IDE_REGISTRY
+
 bp_portal = Blueprint("portal", __name__)
+
+
+def _maybe_rebuild_indexes(category: str) -> None:
+    """
+    Best-effort index rebuild after filesystem mutations.
+    """
+    cat = (category or "").strip().lower()
+    try:
+        if cat == "ide":
+            IDE_REGISTRY.init_and_rebuild()
+        elif cat == "extensions":
+            REGISTRY.init_and_rebuild()
+    except Exception:
+        # do not break admin flows if index rebuild fails
+        pass
 
 
 def render_portal(is_admin: bool):
@@ -100,6 +119,8 @@ def admin_delete_project():
     except Exception:
         abort(500, "Failed to delete project")
 
+    _maybe_rebuild_indexes(category)
+
     return redirect(url_for("portal.admin", category=category))
 
 
@@ -123,6 +144,8 @@ def admin_make_latest():
         set_latest_atomic(pd, version)
     except Exception:
         abort(500, "Failed to set latest")
+
+    _maybe_rebuild_indexes(category)
 
     return redirect(url_for("portal.admin", category=category, project=project))
 
@@ -164,6 +187,8 @@ def admin_delete_release():
         else:
             clear_dir_files_only(pd / "latest")
 
+    _maybe_rebuild_indexes(category)
+
     return redirect(url_for("portal.admin", category=category, project=project))
 
 
@@ -200,6 +225,8 @@ def admin_upload_notes():
         file.save(str(target))
     except Exception:
         abort(500, "Failed to upload notes")
+
+    # Notes do not affect IDE/extension sqlite indexes
 
     return redirect(url_for("portal.admin", category=category, project=project))
 
@@ -242,5 +269,7 @@ def admin_delete_asset():
             set_latest_atomic(pd, version)
         except Exception:
             pass
+
+    _maybe_rebuild_indexes(category)
 
     return redirect(url_for("portal.admin", category=category, project=project))

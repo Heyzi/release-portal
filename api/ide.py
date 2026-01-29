@@ -5,15 +5,13 @@ from typing import Any, Dict, Optional
 
 from flask import Blueprint, abort, jsonify, request, send_from_directory, url_for
 
+from services.ide_registry import IDE_REGISTRY
 from services.releases import (
     RELEASES_ROOT,
     UNIVERSAL_PLATFORM,
-    get_latest_version_from_symlinks,
     is_safe_relpath,
     normalize_platform,
-    strict_pick_latest_symlink,
 )
-
 
 bp_ide = Blueprint("ide_api", __name__)
 
@@ -38,25 +36,22 @@ def ide_releases():
     pd = RELEASES_ROOT / "ide" / project
     if not pd.is_dir():
         return (
-            jsonify(
-                {"state": False, "status": "error", "errorType": "file_not_found", "errorMessage": "Unknown project"}
-            ),
+            jsonify({"state": False, "status": "error", "errorType": "file_not_found", "errorMessage": "Unknown project"}),
             424,
         )
 
-    versions = [p.name for p in pd.iterdir() if p.is_dir() and p.name != "latest"]
-    versions = sorted(versions, reverse=True)
+    # SQLite-backed list
+    versions_rows = IDE_REGISTRY.list_versions(project)
 
-    stable_latest = get_latest_version_from_symlinks(pd, "latest")
+    stable_latest = IDE_REGISTRY.get_stable_latest(project)
 
     releases = []
-    for ver in versions:
-        vdir = pd / ver
+    for r in versions_rows:
         releases.append(
             {
-                "tag": ver,
-                "published_at": str(int(vdir.stat().st_mtime)) if vdir.exists() else None,
-                "is_latest": bool(stable_latest) and ver == stable_latest,
+                "tag": r.version,
+                "published_at": str(int(r.published_ts)) if r.published_ts else None,
+                "is_latest": bool(stable_latest) and r.version == stable_latest,
             }
         )
 
@@ -122,7 +117,7 @@ def ide_latest():
             400,
         )
 
-    latest_ver = get_latest_version_from_symlinks(pd, "latest")
+    latest_ver = IDE_REGISTRY.get_stable_latest(project)
     if not latest_ver:
         return (
             jsonify(
@@ -140,7 +135,7 @@ def ide_latest():
     if os_raw and arch_raw:
         platform = normalize_platform(os_raw, arch_raw)
 
-    picked = strict_pick_latest_symlink(pd, platform, latest_name="latest")
+    picked = IDE_REGISTRY.pick_latest_asset(project, platform)
     if not picked:
         return (
             jsonify(
@@ -154,12 +149,7 @@ def ide_latest():
             424,
         )
 
-    file_name = picked.name
-    latest_rel_path = (
-        f"ide/{project}/latest/{file_name}"
-        if platform == UNIVERSAL_PLATFORM
-        else f"ide/{project}/latest/{platform}/{file_name}"
-    )
+    latest_rel_path, file_name = picked
     latest_url = f"{request.scheme}://{request.host}{url_for('releases_api.api_release_file', path=latest_rel_path)}"
 
     data_obj: Dict[str, Any] = {

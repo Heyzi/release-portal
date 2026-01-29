@@ -11,12 +11,14 @@ from pathlib import Path
 from typing import Any, Dict
 
 from flask import Flask, Response, jsonify, request, g
+from werkzeug.exceptions import HTTPException, NotFound
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from core.config import AppConfig
 
 from services import releases as releases_service
 from services.extensions_registry import REGISTRY
+from services.ide_registry import IDE_REGISTRY
 
 
 def _utc_iso() -> str:
@@ -65,6 +67,50 @@ def _apply_common_headers(resp: Response) -> Response:
     return resp
 
 
+def _log_error(app: Flask, status: int, e: BaseException, include_traceback: bool) -> None:
+    rec = logging.LogRecord(
+        name="error",
+        level=logging.ERROR if int(status) >= 500 else logging.WARNING,
+        pathname=__file__,
+        lineno=0,
+        msg="exception",
+        args=(),
+        exc_info=sys.exc_info() if include_traceback else None,
+    )
+    rec.request_id = getattr(g, "request_id", None)
+    rec.remote_addr = request.headers.get("X-Forwarded-For", request.remote_addr)
+    rec.method = request.method
+    rec.path = request.full_path[:-1] if request.full_path.endswith("?") else request.full_path
+    rec.status = int(status)
+
+    if app.debug:
+        try:
+            body_json = request.get_json(silent=True)
+        except Exception:
+            body_json = None
+        rec.extra = {
+            "query": request.args.to_dict(flat=True),
+            "headers": _safe_headers(),
+            "form": _truncate(request.form.to_dict(flat=True), 5000),
+            "json": _truncate(body_json, 20000),
+        }
+
+    logging.getLogger("error").handle(rec)
+
+
+def _json_error_payload(app: Flask, status: int, e: BaseException) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "error": True,
+        "status": int(status),
+        "message": str(e),
+        "requestId": getattr(g, "request_id", None),
+        "timestamp": _utc_iso(),
+    }
+    if app.debug:
+        payload["traceback"] = _truncate("".join(traceback.format_exception(*sys.exc_info())), 20000)
+    return payload
+
+
 def create_app(cfg: AppConfig) -> Flask:
     base_dir = Path(__file__).resolve().parents[1]
     templates_dir = base_dir / "templates"
@@ -83,7 +129,11 @@ def create_app(cfg: AppConfig) -> Flask:
     except Exception:
         logging.getLogger(__name__).exception("extensions_registry_init_failed")
 
-    # Reverse proxy support (common: proto/host/for)
+    try:
+        IDE_REGISTRY.init_and_rebuild()
+    except Exception:
+        logging.getLogger(__name__).exception("ide_registry_init_failed")
+
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)  # type: ignore[method-assign]
 
     @app.before_request
@@ -124,51 +174,39 @@ def create_app(cfg: AppConfig) -> Flask:
         logging.getLogger("access").handle(rec)
         return _apply_common_headers(resp)
 
-    @app.errorhandler(Exception)
-    def _handle_exception(e: Exception):
-        status = getattr(e, "code", 500)
+    @app.errorhandler(HTTPException)
+    def _handle_http_exception(e: HTTPException):
+        status = int(getattr(e, "code", 500) or 500)
 
-        rec = logging.LogRecord(
-            name="error",
-            level=logging.ERROR if int(status) >= 500 else logging.WARNING,
-            pathname=__file__,
-            lineno=0,
-            msg="exception",
-            args=(),
-            exc_info=sys.exc_info(),
-        )
-        rec.request_id = getattr(g, "request_id", None)
-        rec.remote_addr = request.headers.get("X-Forwarded-For", request.remote_addr)
-        rec.method = request.method
-        rec.path = request.full_path[:-1] if request.full_path.endswith("?") else request.full_path
-        rec.status = int(status)
+        if not isinstance(e, NotFound):
+            _log_error(app, status, e, include_traceback=False)
 
-        if app.debug:
-            try:
-                body_json = request.get_json(silent=True)
-            except Exception:
-                body_json = None
-            rec.extra = {
-                "query": request.args.to_dict(flat=True),
-                "headers": _safe_headers(),
-                "form": _truncate(request.form.to_dict(flat=True), 5000),
-                "json": _truncate(body_json, 20000),
-            }
-
-        logging.getLogger("error").handle(rec)
-
-        payload: Dict[str, Any] = {
-            "error": True,
-            "status": int(status),
-            "message": str(e),
-            "requestId": getattr(g, "request_id", None),
-            "timestamp": _utc_iso(),
-        }
-        if app.debug:
-            payload["traceback"] = _truncate("".join(traceback.format_exception(*sys.exc_info())), 20000)
+        payload = _json_error_payload(app, status, e)
+        if "traceback" in payload and status < 500:
+            payload.pop("traceback", None)
 
         resp = jsonify(payload)
-        resp.status_code = int(status)
+        resp.status_code = status
+        return _apply_common_headers(resp)
+
+    @app.errorhandler(Exception)
+    def _handle_exception(e: Exception):
+        status = int(getattr(e, "code", 500) or 500)
+
+        if isinstance(e, HTTPException):
+            _log_error(app, status, e, include_traceback=False)
+            payload = _json_error_payload(app, status, e)
+            if "traceback" in payload and status < 500:
+                payload.pop("traceback", None)
+            resp = jsonify(payload)
+            resp.status_code = status
+            return _apply_common_headers(resp)
+
+        _log_error(app, status, e, include_traceback=True)
+
+        payload = _json_error_payload(app, status, e)
+        resp = jsonify(payload)
+        resp.status_code = status
         return _apply_common_headers(resp)
 
     @app.get("/health")

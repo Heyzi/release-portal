@@ -1,3 +1,4 @@
+# services/releases.py
 from __future__ import annotations
 
 import os
@@ -90,10 +91,24 @@ CANONICAL_PLATFORMS: Dict[Tuple[str, str], str] = {
 EXCLUDED_ASSET_NAMES_LOWER = {"readme.md", "release.md"}
 
 
+# =========================
+# Indexes root ("индексопомойка")
+# =========================
+
+INDEXES_DIRNAME = "_indexes"
+INDEXES_ROOT = RELEASES_ROOT / INDEXES_DIRNAME
+
+
 def set_releases_root(path: Path) -> None:
     # Update global releases root
-    global RELEASES_ROOT
+    global RELEASES_ROOT, INDEXES_ROOT
     RELEASES_ROOT = path
+    INDEXES_ROOT = RELEASES_ROOT / INDEXES_DIRNAME
+
+
+def indexes_root() -> Path:
+    # Central place for all sqlite indexes
+    return INDEXES_ROOT
 
 
 def normalize_os(os_raw: str) -> str:
