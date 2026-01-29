@@ -1,0 +1,1400 @@
+<!-- templates/index.html -->
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Release manager</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+
+    <style>
+        /* =========================
+           Theme variables
+           Default = DARK
+           ========================= */
+        :root {
+            --bg: #0d1117;
+            --panel: #161b22;
+            --panel-2: #0f1520;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --border: #30363d;
+            --border-soft: #21262d;
+
+            --accent: #2f81f7;
+            --accent-soft: rgba(47, 129, 247, 0.18);
+
+            --success: #3fb950;
+            --success-soft: rgba(63, 185, 80, 0.18);
+
+            --danger: #f85149;
+            --danger-soft: rgba(248, 81, 73, 0.18);
+
+            --shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+            --radius: 10px;
+
+            --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+            --focus-ring: rgba(47, 129, 247, 0.35);
+        }
+
+        /* LIGHT override (your old palette) */
+        :root[data-theme="light"] {
+            --bg: #f6f8fa;
+            --panel: #ffffff;
+            --panel-2: #f6f8fa;
+            --text: #1f2328;
+            --muted: #57606a;
+            --border: #d0d7de;
+            --border-soft: #eaeef2;
+
+            --accent: #0969da;
+            --accent-soft: #ddf4ff;
+
+            --success: #1a7f37;
+            --success-soft: #dafbe1;
+
+            --danger: #cf222e;
+            --danger-soft: #ffebe9;
+
+            --shadow: 0 1px 0 rgba(27, 31, 36, 0.04);
+
+            --focus-ring: rgba(9, 105, 218, 0.25);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: var(--sans);
+            background: var(--bg);
+            color: var(--text);
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .mono {
+            font-family: var(--mono);
+        }
+
+        .page {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 18px 12px 28px;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 650;
+            letter-spacing: -0.2px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .mini-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: var(--panel);
+            font-size: 12px;
+            color: var(--muted);
+            box-shadow: var(--shadow);
+            white-space: nowrap;
+            max-width: 100%;
+        }
+
+        .mini-link a {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 650;
+            max-width: 560px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: inline-block;
+            vertical-align: bottom;
+        }
+
+        .mini-link a:hover {
+            text-decoration: underline;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 340px minmax(0, 1fr);
+            gap: 14px;
+        }
+
+        @media (max-width: 980px) {
+            .layout {
+                grid-template-columns: 1fr;
+            }
+
+            header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .header-right {
+                width: 100%;
+                justify-content: flex-start;
+            }
+
+            .mini-link {
+                width: 100%;
+                justify-content: flex-start;
+            }
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .sidebar-head {
+            padding: 10px 10px;
+            border-bottom: 1px solid var(--border-soft);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .category-tabs {
+            display: grid;
+            grid-auto-flow: column;
+            grid-auto-columns: 1fr;
+            gap: 0;
+            background: var(--panel-2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 4px;
+            overflow: hidden;
+        }
+
+        @media (max-width: 980px) {
+            .category-tabs {
+                grid-auto-flow: row;
+                grid-auto-columns: unset;
+                gap: 6px;
+                padding: 0;
+                border: 0;
+                background: transparent;
+                border-radius: 0;
+            }
+        }
+
+        .tab {
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--muted);
+            border-radius: 10px;
+            padding: 8px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            white-space: nowrap;
+            min-width: 0;
+            text-align: center;
+            letter-spacing: 0;
+            text-transform: lowercase;
+            line-height: 1.1;
+        }
+
+        .tab:hover {
+            background: var(--accent-soft);
+            color: var(--text);
+        }
+
+        .tab:focus {
+            outline: none;
+        }
+
+        .tab:focus-visible {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--focus-ring);
+        }
+
+        .tab.active {
+            background: var(--panel);
+            border-color: rgba(47, 129, 247, 0.35);
+            color: var(--text);
+            font-weight: 650;
+        }
+
+        :root[data-theme="light"] .tab.active {
+            border-color: rgba(9, 105, 218, 0.35);
+        }
+
+        .control {
+            border: 1px solid var(--border);
+            background: var(--panel);
+            color: var(--text);
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 12px;
+            outline: none;
+            width: 100%;
+        }
+
+        .control::placeholder {
+            color: color-mix(in srgb, var(--muted) 80%, transparent);
+        }
+
+        .control:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--focus-ring);
+        }
+
+        .projects {
+            padding: 10px;
+        }
+
+        .project-list {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .project-item a {
+            display: block;
+            padding: 10px 10px;
+            border: 1px solid var(--border-soft);
+            border-radius: 10px;
+            background: var(--panel);
+        }
+
+        .project-item a:hover {
+            text-decoration: none;
+            border-color: var(--border);
+            background: color-mix(in srgb, var(--panel) 80%, var(--bg));
+        }
+
+        .project-item.active a {
+            border-color: rgba(47, 129, 247, 0.35);
+            background: var(--accent-soft);
+        }
+
+        :root[data-theme="light"] .project-item.active a {
+            border-color: rgba(9, 105, 218, 0.35);
+        }
+
+        .project-name {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            font-size: 13px;
+            font-weight: 650;
+            letter-spacing: -0.1px;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            border: 1px solid var(--border);
+            color: var(--muted);
+            background: var(--panel);
+            flex: 0 0 auto;
+        }
+
+        .main {
+            padding: 0;
+        }
+
+        .main-head {
+            padding: 12px 12px;
+            border-bottom: 1px solid var(--border-soft);
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .project-heading {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .project-heading h2 {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: -0.2px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .btn {
+            border: 1px solid var(--border);
+            background: var(--panel-2);
+            color: var(--text);
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .btn-small {
+            padding: 4px 8px;
+            font-size: 11px;
+        }
+
+        .btn:hover {
+            border-color: var(--accent);
+            background: color-mix(in srgb, var(--panel-2) 70%, var(--accent-soft));
+        }
+
+        .btn-primary {
+            border-color: var(--accent);
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            border-color: color-mix(in srgb, var(--accent) 80%, #000);
+            background: color-mix(in srgb, var(--accent) 80%, #000);
+        }
+
+        .btn-danger {
+            border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+            background: var(--danger-soft);
+            color: var(--danger);
+        }
+
+        .btn-danger:hover {
+            border-color: var(--danger);
+            background: color-mix(in srgb, var(--danger-soft) 75%, var(--danger));
+            color: var(--text);
+        }
+
+        .btn[disabled] {
+            opacity: 0.55;
+            cursor: default;
+            border-color: var(--border);
+            background: var(--panel-2);
+            color: var(--muted);
+        }
+
+        .inline-form {
+            display: inline;
+            margin: 0;
+            padding: 0;
+        }
+
+        .release-list {
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .release {
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--panel);
+            overflow: hidden;
+        }
+
+        .release-head {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border-soft);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .release-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            min-width: 0;
+        }
+
+        .tag {
+            font-family: var(--mono);
+            font-size: 12px;
+            font-weight: 650;
+            color: var(--text);
+            padding: 2px 8px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: var(--panel);
+            line-height: 1.2;
+        }
+
+        .badge-latest {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            border: 1px solid color-mix(in srgb, var(--success) 35%, transparent);
+            color: var(--success);
+            background: var(--success-soft);
+            line-height: 1.2;
+        }
+
+        .release-meta {
+            font-size: 12px;
+            color: var(--muted);
+            white-space: nowrap;
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            line-height: 1.2;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .release-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            margin-left: auto;
+        }
+
+        .assets {
+            border: 1px solid var(--border-soft);
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 12px 12px;
+            background: var(--panel);
+        }
+
+        .assets-head {
+            padding: 8px 10px;
+            font-size: 12px;
+            color: var(--muted);
+            background: var(--panel-2);
+            border-bottom: 1px solid var(--border-soft);
+        }
+
+        .asset-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        .asset {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 140px 90px 80px;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            border-top: 1px solid var(--border-soft);
+            font-size: 12px;
+        }
+
+        .asset:first-child {
+            border-top: none;
+        }
+
+        .asset-name {
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .asset-name a {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 650;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: block;
+            max-width: 100%;
+        }
+
+        .asset-name a:hover {
+            text-decoration: underline;
+        }
+
+        .asset-platform {
+            text-align: right;
+            justify-self: end;
+            color: var(--muted);
+            font-family: var(--mono);
+            white-space: nowrap;
+        }
+
+        .asset-size {
+            color: var(--muted);
+            font-family: var(--mono);
+            white-space: nowrap;
+            text-align: right;
+            justify-self: end;
+        }
+
+        .asset-delete {
+            justify-self: end;
+        }
+
+        .notes {
+            margin: 0 12px 12px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border-soft);
+            background: var(--panel-2);
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .notes-body {
+            margin: 0;
+        }
+
+        .md p {
+            margin: 0.4em 0;
+        }
+
+        .md h1,
+        .md h2,
+        .md h3,
+        .md h4,
+        .md h5,
+        .md h6 {
+            margin: 0.6em 0 0.35em;
+            line-height: 1.25;
+        }
+
+        .md ul,
+        .md ol {
+            margin: 0.4em 0 0.4em 1.2em;
+            padding: 0;
+        }
+
+        .md li {
+            margin: 0.15em 0;
+        }
+
+        .md blockquote {
+            margin: 0.6em 0;
+            padding: 0.2em 0.8em;
+            border-left: 3px solid var(--border);
+            color: var(--muted);
+        }
+
+        .md code {
+            font-family: var(--mono);
+            font-size: 11px;
+            background: var(--panel);
+            border: 1px solid var(--border-soft);
+            border-radius: 6px;
+            padding: 0.1em 0.35em;
+        }
+
+        .md pre {
+            overflow: auto;
+            padding: 10px;
+            background: var(--panel);
+            border: 1px solid var(--border-soft);
+            border-radius: 10px;
+        }
+
+        .md pre code {
+            border: none;
+            background: transparent;
+            padding: 0;
+        }
+
+        .md a {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 650;
+        }
+
+        .md a:hover {
+            text-decoration: underline;
+        }
+
+        .md table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0.6em 0;
+        }
+
+        .md th,
+        .md td {
+            border: 1px solid var(--border-soft);
+            padding: 6px 8px;
+            vertical-align: top;
+        }
+
+        .md thead th {
+            background: var(--panel);
+        }
+
+        .md hr {
+            border: none;
+            border-top: 1px solid var(--border-soft);
+            margin: 0.8em 0;
+        }
+
+        .empty {
+            padding: 12px;
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="page">
+        <header>
+            <h1>Release manager</h1>
+
+            <div class="header-right">
+                <div class="mini-link">
+                    <span class="mono">Docs:</span>
+                    <a href="/api" class="mono">/api</a>
+                    <span class="mono">·</span>
+                    <a href="/admin/help" class="mono">/admin/help</a>
+                </div>
+
+                <div class="mini-link">
+                    <span class="mono">Latest:</span>
+                    <a id="latestApiLink" href="#" class="mono">/api/ide/latest?sub_product_name=product</a>
+                </div>
+
+                <div class="mini-link" style="gap:10px;">
+                    <span class="mono">Theme:</span>
+                    <button id="themeToggle" type="button" class="btn btn-small">Light</button>
+                </div>
+            </div>
+
+        </header>
+
+        <main class="layout">
+            <aside class="card">
+                <div class="sidebar-head">
+                    <div class="category-tabs" id="categoryTabs" role="tablist" aria-label="Categories">
+                        {% if categories %}
+                        {% for cat in categories %}
+                        <button type="button" class="tab {% if selected_category == cat.id %}active{% endif %}"
+                            data-category-id="{{ cat.id }}" role="tab"
+                            aria-selected="{% if selected_category == cat.id %}true{% else %}false{% endif %}">
+                            {{ cat.name }}
+                        </button>
+                        {% endfor %}
+                        {% endif %}
+                    </div>
+
+                    <label class="sr-only" for="projectSearch">Search projects</label>
+                    <input id="projectSearch" class="control" type="text" placeholder="Search…" autocomplete="off">
+                </div>
+
+                <div class="projects">
+                    {% if categories %}
+                    <ul class="project-list" id="projectList">
+                        {% for cat in categories %}
+                        {% for p in cat.projects %}
+                        {% set is_active = (selected_category == cat.id and selected_project_id == p.id) %}
+                        <li class="project-item {% if is_active %}active{% endif %}" data-category-id="{{ cat.id }}"
+                            data-project-id="{{ p.id }}" data-project-name="{{ (p.name or p.id) | lower }}">
+                            <a href="{{ url_for(request.endpoint, category=cat.id, project=p.id) }}"
+                                class="project-link">
+                                <div class="project-name">
+                                    <span>{{ p.name or p.id }}</span>
+                                    {% if p.releases_count is defined %}
+                                    <span class="pill">{{ p.releases_count }}</span>
+                                    {% endif %}
+                                </div>
+                            </a>
+                        </li>
+                        {% endfor %}
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <div class="empty">No categories found.</div>
+                    {% endif %}
+                </div>
+            </aside>
+
+            <section class="card main" id="mainPanel">
+                <div class="main-head">
+                    <div class="project-heading">
+                        <h2 id="projectTitle">{{ selected_project_id or 'Releases' }}</h2>
+                    </div>
+
+                    <div class="controls">
+                        <form id="deleteProjectForm" method="post" action="/admin/delete-project" class="inline-form"
+                            style="display:none;">
+                            <input id="deleteCategoryInput" type="hidden" name="category" value="">
+                            <input id="deleteProjectInput" type="hidden" name="project" value="">
+                            <button id="deleteProjectBtn" type="submit" class="btn btn-danger">Delete project</button>
+                        </form>
+
+                        <label class="sr-only" for="releaseSearch">Search releases</label>
+                        <input id="releaseSearch" class="control" type="text" placeholder="Filter releases…"
+                            autocomplete="off" style="max-width: 260px;">
+                    </div>
+                </div>
+
+                <div class="release-list" id="releaseList">
+                    <div class="empty" id="loadingBox">Loading…</div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        const projectSearch = document.getElementById('projectSearch');
+        const releaseSearch = document.getElementById('releaseSearch');
+        const latestApiLink = document.getElementById('latestApiLink');
+        const projectTitle = document.getElementById('projectTitle');
+        const releaseList = document.getElementById('releaseList');
+        const loadingBox = document.getElementById('loadingBox');
+
+        const deleteProjectForm = document.getElementById('deleteProjectForm');
+        const deleteCategoryInput = document.getElementById('deleteCategoryInput');
+        const deleteProjectInput = document.getElementById('deleteProjectInput');
+
+        const categoryTabs = document.getElementById('categoryTabs');
+        const projectList = document.getElementById('projectList');
+
+        const themeToggle = document.getElementById('themeToggle');
+
+        const isAdminPage = window.location.pathname.startsWith('/admin');
+
+        let currentCategoryId = '';
+        let currentProjectId = '';
+
+        /* =========================
+           Theme (default = dark)
+           ========================= */
+        function applyTheme(theme) {
+            const t = (theme === 'light') ? 'light' : 'dark';
+            if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+            else document.documentElement.removeAttribute('data-theme');
+
+            try { localStorage.setItem('theme', t); } catch (_) { }
+
+            if (themeToggle) {
+                themeToggle.textContent = (t === 'light') ? 'Dark' : 'Light';
+                themeToggle.setAttribute('aria-label', (t === 'light') ? 'Switch to dark theme' : 'Switch to light theme');
+                themeToggle.setAttribute('title', (t === 'light') ? 'Switch to dark theme' : 'Switch to light theme');
+            }
+        }
+
+        function initTheme() {
+            let saved = '';
+            try { saved = localStorage.getItem('theme') || ''; } catch (_) { saved = ''; }
+            // Default: DARK (when saved is empty or invalid)
+            applyTheme(saved === 'light' ? 'light' : 'dark');
+        }
+
+        if (themeToggle) {
+            themeToggle.addEventListener('click', () => {
+                const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+                applyTheme(isLight ? 'dark' : 'light');
+            });
+        }
+
+        initTheme();
+
+        if (isAdminPage && deleteProjectForm) {
+            deleteProjectForm.style.display = '';
+            deleteProjectForm.addEventListener('submit', function (e) {
+                const cid = (deleteCategoryInput && deleteCategoryInput.value) ? deleteCategoryInput.value : '';
+                const pid = (deleteProjectInput && deleteProjectInput.value) ? deleteProjectInput.value : '';
+                const ok = confirm('Delete project "' + pid + '" and ALL its releases?');
+                if (!ok) e.preventDefault();
+            });
+        }
+
+        const projectItems = projectList ? Array.from(projectList.querySelectorAll('.project-item')) : [];
+        const tabButtons = categoryTabs ? Array.from(categoryTabs.querySelectorAll('.tab')) : [];
+
+        function toIntMaybe(x) {
+            const n = Number(x);
+            return Number.isFinite(n) ? n : null;
+        }
+
+        function formatEpochSeconds(epochSeconds) {
+            const n = toIntMaybe(epochSeconds);
+            if (n === null) return '';
+            const d = new Date(n * 1000);
+            if (Number.isNaN(d.getTime())) return '';
+            try {
+                return d.toLocaleString(undefined, {
+                    year: 'numeric', month: 'short', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit',
+                });
+            } catch (_) {
+                return d.toISOString().replace('T', ' ').slice(0, 16);
+            }
+        }
+
+        function getActiveCategoryId() {
+            const active = projectItems.find(li => li.classList.contains('active'));
+            return active ? (active.getAttribute('data-category-id') || '') : '';
+        }
+
+        function getActiveProjectId() {
+            const active = projectItems.find(li => li.classList.contains('active'));
+            return active ? (active.getAttribute('data-project-id') || '') : '';
+        }
+
+        function setActiveTab(categoryId) {
+            tabButtons.forEach(b => {
+                const isActive = (b.getAttribute('data-category-id') || '') === categoryId;
+                b.classList.toggle('active', isActive);
+                b.setAttribute('aria-selected', isActive ? 'true' : 'false');
+            });
+        }
+
+        function _setLatestChip(href, label) {
+            if (!latestApiLink) return;
+            latestApiLink.textContent = label || href || '';
+            latestApiLink.setAttribute('href', href || '#');
+        }
+
+        function splitExtensionProjectId(projectId) {
+            const raw = String(projectId || '');
+            const parts = raw.split('/');
+            const ns = (parts[0] || '').trim();
+            const ext = (parts[1] || '').trim();
+            if (!ns || !ext) return null;
+            return { ns, ext };
+        }
+
+        function extensionVsixUrl(ns, ext, version, tp) {
+            const nsN = String(ns || '').trim().toLowerCase();
+            const extN = String(ext || '').trim().toLowerCase();
+            const verN = String(version || '').trim();
+            const tpN = String(tp || 'universal').trim().toLowerCase() || 'universal';
+            return '/vscode/asset/' + encodeURIComponent(nsN)
+                + '/' + encodeURIComponent(extN)
+                + '/' + encodeURIComponent(verN)
+                + '/Microsoft.VisualStudio.Services.VSIXPackage?targetPlatform=' + encodeURIComponent(tpN);
+        }
+
+        function updateLatestApiChip(categoryId, projectId) {
+            if (!latestApiLink) return;
+
+            if (!categoryId || !projectId) {
+                _setLatestChip('#', '/api/ide/latest?sub_product_name=product');
+                return;
+            }
+
+            if (categoryId === 'extensions') {
+                const p = splitExtensionProjectId(projectId);
+                if (!p) {
+                    _setLatestChip('#', '#');
+                    return;
+                }
+                const href = '/vscode/gallery/' + encodeURIComponent(p.ns) + '/' + encodeURIComponent(p.ext) + '/latest?targetPlatform=universal';
+                _setLatestChip(href, href);
+                return;
+            }
+
+            if (categoryId === 'ide') {
+                const href = '/api/ide/latest?sub_product_name=' + encodeURIComponent(projectId);
+                _setLatestChip(href, href);
+                return;
+            }
+
+            const href = '/' + categoryId + '/latest?sub_product_name=' + encodeURIComponent(projectId);
+            _setLatestChip(href, href);
+        }
+
+        function setActiveProjectUi(categoryId, projectId) {
+            currentCategoryId = categoryId || '';
+            currentProjectId = projectId || '';
+
+            projectItems.forEach(li => {
+                const cid = li.getAttribute('data-category-id');
+                const pid = li.getAttribute('data-project-id');
+                li.classList.toggle('active', cid === categoryId && pid === projectId);
+            });
+
+            setActiveTab(categoryId);
+
+            if (projectTitle) projectTitle.textContent = (projectId || 'Releases');
+
+            updateLatestApiChip(categoryId, projectId);
+
+            if (deleteCategoryInput) deleteCategoryInput.value = categoryId || '';
+            if (deleteProjectInput) deleteProjectInput.value = projectId || '';
+        }
+
+        function applySidebarFilter() {
+            const categoryId = getSelectedCategory();
+            const query = (projectSearch ? projectSearch.value : '').trim().toLowerCase();
+
+            let anyVisible = false;
+
+            projectItems.forEach(li => {
+                const cid = li.getAttribute('data-category-id') || '';
+                const name = (li.getAttribute('data-project-name') || '').toLowerCase();
+                const show = (cid === categoryId) && (!query || name.includes(query));
+                li.style.display = show ? '' : 'none';
+                if (show) anyVisible = true;
+            });
+
+            const active = projectItems.find(li => li.classList.contains('active'));
+            if (!active || active.style.display === 'none') {
+                const first = projectItems.find(li => li.style.display !== 'none');
+                if (first) {
+                    const cid = first.getAttribute('data-category-id') || '';
+                    const pid = first.getAttribute('data-project-id') || '';
+                    setActiveProjectUi(cid, pid);
+                    loadReleases(cid, pid);
+                    updateUrl(cid, pid);
+                } else {
+                    updateLatestApiChip(categoryId, '');
+                    if (releaseList) {
+                        releaseList.innerHTML = '';
+                        releaseList.appendChild(el('div', { className: 'empty', text: 'No projects match the filter.' }));
+                    }
+                }
+            }
+
+            return anyVisible;
+        }
+
+        function getSelectedCategory() {
+            const activeTab = tabButtons.find(b => b.classList.contains('active'));
+            if (activeTab) return activeTab.getAttribute('data-category-id') || '';
+            return getActiveCategoryId();
+        }
+
+        function updateUrl(categoryId, projectId) {
+            try {
+                const url = new URL(window.location.href);
+                url.searchParams.set('category', categoryId);
+                url.searchParams.set('project', projectId);
+                window.history.replaceState({}, '', url.toString());
+            } catch (_) { }
+        }
+
+        function el(tag, attrs, children) {
+            const n = document.createElement(tag);
+            if (attrs) {
+                Object.keys(attrs).forEach(k => {
+                    if (k === 'className') n.className = attrs[k];
+                    else if (k === 'text') n.textContent = attrs[k];
+                    else n.setAttribute(k, attrs[k]);
+                });
+            }
+            (children || []).forEach(c => n.appendChild(c));
+            return n;
+        }
+
+        function normalizePlatformFromAsset(a) {
+            const platform = (a && a.platform) ? String(a.platform) : '';
+            return platform ? platform : 'universal';
+        }
+
+        function renderReleases(releases) {
+            releaseList.innerHTML = '';
+
+            if (!Array.isArray(releases) || releases.length === 0) {
+                releaseList.appendChild(el('div', { className: 'empty', text: 'No releases.' }));
+                return;
+            }
+
+            const sorted = releases.slice().sort((a, b) => {
+                const la = a && a.is_latest ? 1 : 0;
+                const lb = b && b.is_latest ? 1 : 0;
+                if (la !== lb) return lb - la;
+                const ta = (a && a.tag) ? String(a.tag) : '';
+                const tb = (b && b.tag) ? String(b.tag) : '';
+                return ta.localeCompare(tb, undefined, { numeric: true, sensitivity: 'base' });
+            });
+
+            const isExtensions = (currentCategoryId === 'extensions');
+            const extProject = isExtensions ? splitExtensionProjectId(currentProjectId) : null;
+
+            sorted.forEach(r => {
+                const tag = (r && r.tag) ? String(r.tag) : '';
+                const publishedAt = (r && r.published_at) ? String(r.published_at) : '';
+                const isLatest = !!(r && r.is_latest);
+                const assets = (r && Array.isArray(r.assets)) ? r.assets : [];
+
+                const titleLeft = el('div', { className: 'release-title' }, [
+                    el('span', { className: 'tag', text: tag }),
+                    ...(isLatest ? [el('span', { className: 'badge-latest', text: 'Latest' })] : [])
+                ]);
+
+                const meta = el('div', { className: 'release-meta' }, []);
+                if (publishedAt) {
+                    const s = formatEpochSeconds(publishedAt);
+                    if (s) meta.appendChild(el('span', { className: 'published', text: s }));
+                }
+
+                const headChildren = [titleLeft, meta];
+
+                if (isAdminPage) {
+                    const actions = el('div', { className: 'release-actions' }, []);
+
+                    if (!isLatest) {
+                        const f = el('form', { method: 'post', action: '/admin/make-latest', className: 'inline-form' }, []);
+                        f.appendChild(el('input', { type: 'hidden', name: 'category', value: getActiveCategoryId() }));
+                        f.appendChild(el('input', { type: 'hidden', name: 'project', value: getActiveProjectId() }));
+                        f.appendChild(el('input', { type: 'hidden', name: 'version', value: tag }));
+                        f.appendChild(el('button', { type: 'submit', className: 'btn btn-primary', text: 'Make latest' }));
+                        actions.appendChild(f);
+                    } else {
+                        actions.appendChild(el('button', { className: 'btn', disabled: 'disabled', text: 'Make latest' }));
+                    }
+
+                    const del = el('form', { method: 'post', action: '/admin/delete-release', className: 'inline-form' }, []);
+                    del.addEventListener('submit', function (e) {
+                        const ok = confirm('Delete release ' + tag + '?');
+                        if (!ok) e.preventDefault();
+                    });
+                    del.appendChild(el('input', { type: 'hidden', name: 'category', value: getActiveCategoryId() }));
+                    del.appendChild(el('input', { type: 'hidden', name: 'project', value: getActiveProjectId() }));
+                    del.appendChild(el('input', { type: 'hidden', name: 'version', value: tag }));
+                    del.appendChild(el('button', { type: 'submit', className: 'btn btn-danger', text: 'Delete' }));
+                    actions.appendChild(del);
+
+                    const notesUploadForm = el('form', {
+                        method: 'post',
+                        action: '/admin/upload-notes',
+                        className: 'inline-form',
+                        enctype: 'multipart/form-data'
+                    }, []);
+
+                    notesUploadForm.appendChild(el('input', { type: 'hidden', name: 'category', value: getActiveCategoryId() }));
+                    notesUploadForm.appendChild(el('input', { type: 'hidden', name: 'project', value: getActiveProjectId() }));
+                    notesUploadForm.appendChild(el('input', { type: 'hidden', name: 'version', value: tag }));
+
+                    const notesFileInput = el('input', { type: 'file', name: 'notes', accept: '.md', style: 'display:none' });
+                    const notesUploadBtn = el('button', { type: 'button', className: 'btn', text: 'Upload notes' });
+
+                    notesUploadBtn.addEventListener('click', function () { notesFileInput.click(); });
+                    notesFileInput.addEventListener('change', function () {
+                        if (notesFileInput.files && notesFileInput.files.length > 0) notesUploadForm.submit();
+                    });
+
+                    notesUploadForm.appendChild(notesFileInput);
+                    notesUploadForm.appendChild(notesUploadBtn);
+                    actions.appendChild(notesUploadForm);
+
+                    headChildren.push(actions);
+                }
+
+                const head = el('div', { className: 'release-head' }, headChildren);
+
+                const article = el('article', {
+                    className: 'release',
+                    'data-is-latest': isLatest ? '1' : '0',
+                    'data-release-text': (tag + ' ' + (publishedAt || '')).toLowerCase()
+                }, [head]);
+
+                if (r && typeof r.notes_html === 'string' && r.notes_html.trim() !== '') {
+                    const notesBox = el('div', { className: 'notes' }, []);
+                    const body = el('div', { className: 'notes-body md' }, []);
+                    body.innerHTML = r.notes_html;
+                    notesBox.appendChild(body);
+                    article.appendChild(notesBox);
+                }
+
+                if (assets.length > 0) {
+                    const ul = el('ul', { className: 'asset-list' }, []);
+
+                    if (isExtensions && extProject && tag) {
+                        const byTp = new Map();
+
+                        assets.forEach(a => {
+                            const name = a && a.name ? String(a.name) : '';
+                            if (name.toLowerCase() === 'extension.vsix') {
+                                const tp = normalizePlatformFromAsset(a);
+                                byTp.set(tp, a);
+                                return;
+                            }
+                            const tp = normalizePlatformFromAsset(a);
+                            if (!byTp.has(tp)) byTp.set(tp, a);
+                        });
+
+                        const tps = Array.from(byTp.keys()).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+                        tps.forEach(tp => {
+                            const href = extensionVsixUrl(extProject.ns, extProject.ext, tag, tp);
+                            const link = el('a', { href: href, title: 'Download ' + tp, text: tp });
+
+                            const nameCell = el('span', { className: 'asset-name' }, [link]);
+                            const platformCell = el('span', { className: 'asset-platform', text: '' });
+                            const sizeCell = el('span', { className: 'asset-size', text: '' });
+
+                            const assetChildren = [nameCell, platformCell, sizeCell];
+
+                            if (isAdminPage) {
+                                const a0 = byTp.get(tp);
+                                const delForm = el('form', { method: 'post', action: '/admin/delete-asset', className: 'inline-form asset-delete' }, []);
+                                delForm.addEventListener('submit', function (e) {
+                                    const ok = confirm('Delete extension for ' + tp + '?');
+                                    if (!ok) e.preventDefault();
+                                });
+                                delForm.appendChild(el('input', { type: 'hidden', name: 'category', value: getActiveCategoryId() }));
+                                delForm.appendChild(el('input', { type: 'hidden', name: 'project', value: getActiveProjectId() }));
+                                delForm.appendChild(el('input', { type: 'hidden', name: 'version', value: tag }));
+                                delForm.appendChild(el('input', { type: 'hidden', name: 'platform', value: tp }));
+                                delForm.appendChild(el('input', { type: 'hidden', name: 'name', value: (a0 && a0.name) ? String(a0.name) : 'extension.vsix' }));
+                                delForm.appendChild(el('button', { type: 'submit', className: 'btn btn-danger btn-small', text: 'Delete' }));
+                                assetChildren.push(delForm);
+                            }
+
+                            ul.appendChild(el('li', { className: 'asset' }, assetChildren));
+                        });
+                    } else {
+                        assets.forEach(a => {
+                            const name = a && a.name ? String(a.name) : '';
+                            const href = a && a.href ? String(a.href) : '#';
+                            const size = a && a.size ? String(a.size) : '';
+                            const platform = a && a.platform ? String(a.platform) : '';
+
+                            const link = el('a', { href: href, title: name, text: name });
+
+                            const nameCell = el('span', { className: 'asset-name' }, [link]);
+                            const platformCell = el('span', { className: 'asset-platform', text: platform || '' });
+                            const sizeCell = el('span', { className: 'asset-size', text: size });
+
+                            const assetChildren = [nameCell, platformCell, sizeCell];
+
+                            if (isAdminPage) {
+                                const delForm = el('form', { method: 'post', action: '/admin/delete-asset', className: 'inline-form asset-delete' }, []);
+                                delForm.addEventListener('submit', function (e) {
+                                    const ok = confirm('Delete asset ' + name + '?');
+                                    if (!ok) e.preventDefault();
+                                });
+                                delForm.appendChild(el('input', { type: 'hidden', name: 'category', value: getActiveCategoryId() }));
+                                delForm.appendChild(el('input', { type: 'hidden', name: 'project', value: getActiveProjectId() }));
+                                delForm.appendChild(el('input', { type: 'hidden', name: 'version', value: tag }));
+                                delForm.appendChild(el('input', { type: 'hidden', name: 'platform', value: platform }));
+                                delForm.appendChild(el('input', { type: 'hidden', name: 'name', value: name }));
+                                delForm.appendChild(el('button', { type: 'submit', className: 'btn btn-danger btn-small', text: 'Delete' }));
+                                assetChildren.push(delForm);
+                            }
+
+                            ul.appendChild(el('li', { className: 'asset' }, assetChildren));
+                        });
+                    }
+
+                    article.appendChild(el('div', { className: 'assets' }, [
+                        el('div', { className: 'assets-head', text: (isExtensions ? 'Platforms' : 'Assets') }),
+                        ul
+                    ]));
+                }
+
+                releaseList.appendChild(article);
+            });
+        }
+
+        async function loadReleases(categoryId, projectId) {
+            if (!categoryId || !projectId) return;
+
+            if (loadingBox) loadingBox.style.display = '';
+            try {
+                const res = await fetch('/api/releases?category=' + encodeURIComponent(categoryId) + '&project=' + encodeURIComponent(projectId), {
+                    headers: { 'Accept': 'application/json' }
+                });
+                const data = await res.json();
+                if (!res.ok || !data || data.state !== true) {
+                    const msg = (data && data.errorMessage) ? data.errorMessage : ('Failed to load (HTTP ' + res.status + ')');
+                    releaseList.innerHTML = '';
+                    releaseList.appendChild(el('div', { className: 'empty', text: msg }));
+                    return;
+                }
+                renderReleases(data.data.releases);
+                if (releaseSearch) { releaseSearch.value = ''; filterReleases(''); }
+            } catch (_) {
+                releaseList.innerHTML = '';
+                releaseList.appendChild(el('div', { className: 'empty', text: 'Failed to load.' }));
+            } finally {
+                if (loadingBox) loadingBox.style.display = 'none';
+            }
+        }
+
+        function filterReleases(q) {
+            const query = (q || '').trim().toLowerCase();
+            const releases = Array.from(releaseList.querySelectorAll('.release'));
+            let anyVisible = false;
+
+            releases.forEach(r => {
+                const t = r.getAttribute('data-release-text') || '';
+                const show = !query || t.includes(query);
+                r.style.display = show ? '' : 'none';
+                if (show) anyVisible = true;
+            });
+
+            let empty = releaseList.querySelector('[data-empty-filter]');
+            if (!anyVisible && releases.length > 0) {
+                if (!empty) {
+                    empty = document.createElement('div');
+                    empty.className = 'empty';
+                    empty.setAttribute('data-empty-filter', '1');
+                    empty.textContent = 'No releases match the filter.';
+                    releaseList.appendChild(empty);
+                }
+                empty.style.display = '';
+            } else if (empty) {
+                empty.style.display = 'none';
+            }
+        }
+
+        function pickFirstProjectInCategory(categoryId) {
+            const query = (projectSearch ? projectSearch.value : '').trim().toLowerCase();
+            const first = projectItems.find(li => {
+                const cid = li.getAttribute('data-category-id') || '';
+                const name = (li.getAttribute('data-project-name') || '').toLowerCase();
+                const okQuery = (!query || name.includes(query));
+                return cid === categoryId && okQuery;
+            });
+            return first || null;
+        }
+
+        projectItems.forEach(li => {
+            const a = li.querySelector('a.project-link');
+            if (!a) return;
+            a.addEventListener('click', function (e) {
+                if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+                e.preventDefault();
+
+                const cid = li.getAttribute('data-category-id') || '';
+                const pid = li.getAttribute('data-project-id') || '';
+                if (!cid || !pid) return;
+
+                setActiveProjectUi(cid, pid);
+                loadReleases(cid, pid);
+                updateUrl(cid, pid);
+            });
+        });
+
+        tabButtons.forEach(btn => {
+            btn.addEventListener('click', function () {
+                const cid = btn.getAttribute('data-category-id') || '';
+                if (!cid) return;
+
+                setActiveTab(cid);
+                if (releaseSearch) releaseSearch.value = '';
+
+                const first = pickFirstProjectInCategory(cid);
+                if (first) {
+                    const pid = first.getAttribute('data-project-id') || '';
+                    setActiveProjectUi(cid, pid);
+                    applySidebarFilter();
+                    loadReleases(cid, pid);
+                    updateUrl(cid, pid);
+                } else {
+                    applySidebarFilter();
+                    if (projectTitle) projectTitle.textContent = 'Releases';
+                    updateLatestApiChip(cid, '');
+                    if (releaseList) {
+                        releaseList.innerHTML = '';
+                        releaseList.appendChild(el('div', { className: 'empty', text: 'No projects.' }));
+                    }
+                }
+            });
+        });
+
+        if (projectSearch) projectSearch.addEventListener('input', () => applySidebarFilter());
+        if (releaseSearch) releaseSearch.addEventListener('input', () => filterReleases(releaseSearch.value));
+
+        const initialCid = '{{ selected_category }}';
+        const initialPid = '{{ selected_project_id }}';
+
+        function init() {
+            let cid = initialCid || '';
+            let pid = initialPid || '';
+
+            if (!cid) {
+                const firstTab = tabButtons[0];
+                cid = firstTab ? (firstTab.getAttribute('data-category-id') || '') : '';
+            }
+
+            if (cid) setActiveTab(cid);
+
+            if (!pid && cid) {
+                const first = pickFirstProjectInCategory(cid);
+                pid = first ? (first.getAttribute('data-project-id') || '') : '';
+            }
+
+            applySidebarFilter();
+
+            if (cid && pid) {
+                setActiveProjectUi(cid, pid);
+                loadReleases(cid, pid);
+                updateUrl(cid, pid);
+            } else {
+                updateLatestApiChip(cid, '');
+                if (releaseList) {
+                    releaseList.innerHTML = '';
+                    releaseList.appendChild(el('div', { className: 'empty', text: 'No projects.' }));
+                }
+            }
+        }
+
+        init();
+    </script>
+</body>
+
+</html>

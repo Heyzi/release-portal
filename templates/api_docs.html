@@ -1,0 +1,358 @@
+<!-- templates/api_docs.html -->
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>{{ title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+
+    <style>
+        /* =========================
+           Theme variables
+           Default = DARK
+           ========================= */
+        :root {
+            --bg: #0d1117;
+            --panel: #161b22;
+            --panel-2: #0f1520;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --border: #30363d;
+            --border-soft: #21262d;
+            --accent: #2f81f7;
+            --shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+            --radius: 10px;
+            --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            --focus-ring: rgba(47, 129, 247, 0.35);
+        }
+
+        /* LIGHT override (old palette) */
+        :root[data-theme="light"] {
+            --bg: #f6f8fa;
+            --panel: #ffffff;
+            --panel-2: #f6f8fa;
+            --text: #1f2328;
+            --muted: #57606a;
+            --border: #d0d7de;
+            --border-soft: #eaeef2;
+            --accent: #0969da;
+            --shadow: 0 1px 0 rgba(27, 31, 36, 0.04);
+            --focus-ring: rgba(9, 105, 218, 0.25);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: var(--sans);
+            background: var(--bg);
+            color: var(--text);
+        }
+
+        .page {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 18px 12px 28px;
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -0.2px;
+        }
+
+        .sub {
+            margin: 4px 0 0 0;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .right {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 650;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .toolbar {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border-soft);
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .control {
+            border: 1px solid var(--border);
+            background: var(--panel);
+            color: var(--text);
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 12px;
+            outline: none;
+            width: 360px;
+            max-width: 100%;
+        }
+
+        .control::placeholder {
+            color: var(--muted);
+        }
+
+        .control:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--focus-ring);
+        }
+
+        .meta {
+            font-size: 12px;
+            color: var(--muted);
+            margin-left: auto;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        thead th {
+            text-align: left;
+            background: var(--panel-2);
+            border-bottom: 1px solid var(--border-soft);
+            padding: 10px 12px;
+            color: var(--muted);
+            font-weight: 700;
+        }
+
+        tbody td {
+            border-top: 1px solid var(--border-soft);
+            padding: 10px 12px;
+            vertical-align: top;
+        }
+
+        .mono {
+            font-family: var(--mono);
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            border: 1px solid var(--border);
+            color: var(--muted);
+            background: var(--panel);
+            font-family: var(--mono);
+            white-space: nowrap;
+        }
+
+        .empty {
+            padding: 12px;
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .copy-btn {
+            border: 1px solid var(--border);
+            background: var(--panel-2);
+            color: var(--text);
+            border-radius: 8px;
+            padding: 4px 8px;
+            font-size: 11px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .copy-btn:hover {
+            border-color: var(--accent);
+            background: rgba(47, 129, 247, 0.15);
+        }
+
+        .btn {
+            border: 1px solid var(--border);
+            background: var(--panel-2);
+            color: var(--text);
+            border-radius: 8px;
+            padding: 4px 8px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            border-color: var(--accent);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="page">
+        <header>
+            <div>
+                <h1>{{ title }}</h1>
+                <p class="sub">{{ subtitle }} · scope: <span class="mono">{{ scope_label }}</span></p>
+            </div>
+            <div class="right">
+                <a href="/ui">UI</a>
+                <a href="/admin">Admin UI</a>
+                <a href="/api">API</a>
+                <a href="/admin/help">Admin API</a>
+
+                <button id="themeToggle" type="button" class="btn">Light</button>
+            </div>
+        </header>
+
+        <section class="card">
+            <div class="toolbar">
+                <input id="q" class="control" type="text" placeholder="Filter by method/path/endpoint…"
+                    autocomplete="off">
+                <div class="meta">Generated: {{ generated_at }} · Rows: {{ rows|length }}</div>
+            </div>
+
+            {% if rows and rows|length > 0 %}
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 180px;">Methods</th>
+                        <th>Path</th>
+                        <th style="width: 340px;">Endpoint</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody">
+                    {% for r in rows %}
+                    <tr data-text="{{ (r.methods_str ~ ' ' ~ r.path ~ ' ' ~ r.endpoint)|lower }}">
+                        <td><span class="pill">{{ r.methods_str }}</span></td>
+                        <td class="mono">
+                            <a class="mono" href="{{ r.path }}">{{ r.path }}</a>
+                            <button class="copy-btn" type="button" data-copy="{{ r.path }}">Copy</button>
+                        </td>
+                        <td class="mono">{{ r.endpoint }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty">No endpoints found for scope {{ scope_label }}.</div>
+            {% endif %}
+        </section>
+    </div>
+
+    <script>
+        /* =========================
+           Theme (default = dark)
+           ========================= */
+        const themeToggle = document.getElementById('themeToggle');
+
+        function applyTheme(theme) {
+            const t = (theme === 'light') ? 'light' : 'dark';
+            if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+            else document.documentElement.removeAttribute('data-theme');
+
+            try { localStorage.setItem('theme', t); } catch (_) { }
+
+            if (themeToggle) themeToggle.textContent = (t === 'light') ? 'Dark' : 'Light';
+        }
+
+        (function initTheme() {
+            let saved = '';
+            try { saved = localStorage.getItem('theme') || ''; } catch (_) { }
+            applyTheme(saved === 'light' ? 'light' : 'dark');
+        })();
+
+        if (themeToggle) {
+            themeToggle.addEventListener('click', () => {
+                const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+                applyTheme(isLight ? 'dark' : 'light');
+            });
+        }
+
+        const q = document.getElementById('q');
+        const tbody = document.getElementById('tbody');
+
+        function apply() {
+            const v = (q && q.value ? q.value : '').trim().toLowerCase();
+            if (!tbody) return;
+
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            rows.forEach(tr => {
+                const t = tr.getAttribute('data-text') || '';
+                tr.style.display = (!v || t.includes(v)) ? '' : 'none';
+            });
+        }
+
+        async function copyText(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                return true;
+            } catch (_) {
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.style.position = 'fixed';
+                    ta.style.left = '-9999px';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    const ok = document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    return !!ok;
+                } catch (_) {
+                    return false;
+                }
+            }
+        }
+
+        if (tbody) {
+            tbody.addEventListener('click', async (e) => {
+                const btn = e.target.closest('button[data-copy]');
+                if (!btn) return;
+                const path = btn.getAttribute('data-copy') || '';
+                if (!path) return;
+                const ok = await copyText(path);
+                const old = btn.textContent;
+                btn.textContent = ok ? 'Copied' : 'Copy failed';
+                setTimeout(() => { btn.textContent = old; }, 900);
+            });
+        }
+
+        if (q) q.addEventListener('input', apply);
+    </script>
+</body>
+
+</html>
