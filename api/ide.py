@@ -160,7 +160,7 @@ def ide_latest():
         if platform == UNIVERSAL_PLATFORM
         else f"ide/{project}/latest/{platform}/{file_name}"
     )
-    latest_url = f"{request.scheme}://{request.host}{url_for('api_release_file', path=latest_rel_path)}"
+    latest_url = f"{request.scheme}://{request.host}{url_for('releases_api.api_release_file', path=latest_rel_path)}"
 
     data_obj: Dict[str, Any] = {
         "url": latest_url,
