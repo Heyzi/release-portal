@@ -1,14 +1,15 @@
 # services/ide_registry.py
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
-from services.releases import RELEASES_ROOT, UNIVERSAL_PLATFORM, get_latest_version_from_symlinks
+from services.releases import RELEASES_ROOT, get_latest_version_from_symlinks, normalize_platform
 
 
 def _indexes_root() -> Path:
@@ -32,15 +33,34 @@ def _safe_seg(s: str) -> bool:
     return True
 
 
+def _read_json_utf8(p: Path) -> Optional[dict]:
+    try:
+        raw = p.read_text(encoding="utf-8")
+        obj = json.loads(raw)
+        return obj if isinstance(obj, dict) else None
+    except Exception:
+        return None
+
+
+def _req_str(obj: dict, key: str) -> Optional[str]:
+    v = obj.get(key)
+    if not isinstance(v, str):
+        return None
+    s = v.strip()
+    return s if s else None
+
+
 @dataclass(frozen=True)
-class IdeAssetRow:
+class IdePlatformRow:
     project: str
     version: str
     platform: str
-    file_name: str
-    file_rel_path: str
+    meta_rel_path: str
+    binary_rel_path: str
     published_ts: int
     is_latest: int
+    is_valid: int
+    invalid_reason: Optional[str]
 
 
 @dataclass(frozen=True)
@@ -51,7 +71,7 @@ class IdeVersionRow:
 
 
 class IdeRegistry:
-    # SQLite-backed registry for IDE releases
+    # SQLite-backed registry for IDE releases (platform-level, per TZ)
     def __init__(self) -> None:
         self._local = threading.local()
         self._init_lock = threading.Lock()
@@ -74,26 +94,38 @@ class IdeRegistry:
         return conn
 
     def init_and_rebuild(self) -> None:
-        # Initialize schema and rebuild from filesystem
+        """
+        Initialize schema and rebuild from filesystem.
+
+        Requirements implemented:
+        - index stored at RELEASES_ROOT/_indexes/ide_index.sqlite
+        - table ide_platforms with PK(project, version, platform)
+        - scan ide/<project>/<version>/<platform>/
+        - validation: exactly one *.json, matching binary exists, json required fields,
+          normalize_platform(os_type, arch) == platform dir, sub_product_name == project, version == version dir
+        - UNIVERSAL_PLATFORM is not used for IDE
+        """
         with self._init_lock:
             conn = self._conn()
             conn.execute("BEGIN IMMEDIATE")
             try:
                 conn.execute(
                     """
-                    CREATE TABLE IF NOT EXISTS ide_assets (
+                    CREATE TABLE IF NOT EXISTS ide_platforms (
                         project TEXT NOT NULL,
                         version TEXT NOT NULL,
                         platform TEXT NOT NULL,
-                        file_name TEXT NOT NULL,
-                        file_rel_path TEXT NOT NULL,
+                        meta_rel_path TEXT NOT NULL,
+                        binary_rel_path TEXT NOT NULL,
                         published_ts INTEGER NOT NULL,
-                        is_latest INTEGER NOT NULL DEFAULT 0,
-                        PRIMARY KEY (project, version, platform, file_name)
+                        is_latest INTEGER NOT NULL,
+                        is_valid INTEGER NOT NULL,
+                        invalid_reason TEXT NULL,
+                        PRIMARY KEY (project, version, platform)
                     )
                     """
                 )
-                conn.execute("DELETE FROM ide_assets")
+                conn.execute("DELETE FROM ide_platforms")
                 conn.execute("COMMIT")
             except Exception:
                 conn.execute("ROLLBACK")
@@ -105,18 +137,24 @@ class IdeRegistry:
                 try:
                     conn.executemany(
                         """
-                        INSERT INTO ide_assets(project, version, platform, file_name, file_rel_path, published_ts, is_latest)
-                        VALUES(?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO ide_platforms(
+                            project, version, platform,
+                            meta_rel_path, binary_rel_path,
+                            published_ts, is_latest, is_valid, invalid_reason
+                        )
+                        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         [
                             (
                                 r.project,
                                 r.version,
                                 r.platform,
-                                r.file_name,
-                                r.file_rel_path,
+                                r.meta_rel_path,
+                                r.binary_rel_path,
                                 int(r.published_ts),
                                 int(r.is_latest),
+                                int(r.is_valid),
+                                r.invalid_reason,
                             )
                             for r in rows
                         ],
@@ -126,19 +164,20 @@ class IdeRegistry:
                     conn.execute("ROLLBACK")
                     raise
 
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_ide_project_ver ON ide_assets(project, version)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_ide_project_published ON ide_assets(project, published_ts DESC)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_ide_project_version_platform ON ide_assets(project, version, platform)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_ide_project_latest_platform ON ide_assets(project, is_latest, platform)")
+            # Indexes per TZ
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_ide_project_ver ON ide_platforms(project, version)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_ide_project_latest_platform ON ide_platforms(project, is_latest, platform)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_ide_project_published ON ide_platforms(project, published_ts DESC)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_ide_project_platform ON ide_platforms(project, platform)")
 
             self._inited = True
 
-    def _scan_fs_rows(self) -> List[IdeAssetRow]:
+    def _scan_fs_rows(self) -> List[IdePlatformRow]:
         root = _ide_root()
         if not root.is_dir():
             return []
 
-        out: List[IdeAssetRow] = []
+        out: List[IdePlatformRow] = []
         now = int(time.time())
 
         for proj_dir in root.iterdir():
@@ -148,8 +187,7 @@ class IdeRegistry:
             if not _safe_seg(project):
                 continue
 
-            stable_latest = get_latest_version_from_symlinks(proj_dir, "latest") or ""
-            stable_latest = stable_latest.strip()
+            stable_latest = (get_latest_version_from_symlinks(proj_dir, "latest") or "").strip()
 
             for ver_dir in proj_dir.iterdir():
                 if not ver_dir.is_dir():
@@ -158,58 +196,101 @@ class IdeRegistry:
                 if not _safe_seg(ver) or ver.lower() == "latest":
                     continue
 
-                # Files directly in version dir => universal
-                for child in ver_dir.iterdir():
-                    if child.is_file():
-                        file_name = child.name
-                        if not _safe_seg(file_name):
-                            continue
-                        try:
-                            ts = int(child.stat().st_mtime)
-                        except Exception:
-                            ts = now
-                        rel = f"ide/{project}/{ver}/{file_name}"
-                        out.append(
-                            IdeAssetRow(
-                                project=project,
-                                version=ver,
-                                platform=UNIVERSAL_PLATFORM,
-                                file_name=file_name,
-                                file_rel_path=rel,
-                                published_ts=ts,
-                                is_latest=1 if stable_latest and ver == stable_latest else 0,
-                            )
-                        )
-
-                # Platform subdirs
+                # Only platform subdirs are considered. Files directly in version dir are ignored for IDE.
                 for plat_dir in ver_dir.iterdir():
                     if not plat_dir.is_dir():
                         continue
                     platform = plat_dir.name.strip()
                     if not _safe_seg(platform) or platform.lower() == "latest":
                         continue
-                    for f in plat_dir.iterdir():
-                        if not f.is_file():
-                            continue
-                        file_name = f.name
-                        if not _safe_seg(file_name):
-                            continue
+
+                    meta_files = [p for p in plat_dir.iterdir() if p.is_file() and p.name.endswith(".json")]
+                    meta_rel_path = ""
+                    binary_rel_path = ""
+                    published_ts = now
+                    is_latest = 1 if stable_latest and ver == stable_latest else 0
+                    is_valid = 0
+                    invalid_reason: Optional[str] = None
+
+                    if len(meta_files) == 0:
+                        invalid_reason = "no_meta_json"
+                    elif len(meta_files) > 1:
+                        invalid_reason = "multiple_meta_json"
+                    else:
+                        meta_p = meta_files[0]
+                        meta_name = meta_p.name
+
+                        # Derive binary: meta filename without ".json" suffix
+                        binary_p = meta_p.with_suffix("")  # removes only .json
+
+                        # Build rel paths regardless of validity (must be NOT NULL in DB)
+                        meta_rel_path = f"ide/{project}/{ver}/{platform}/{meta_name}"
+                        binary_rel_path = f"ide/{project}/{ver}/{platform}/{binary_p.name}"
+
+                        # published_ts = max(mtime(meta), mtime(binary)) when possible
                         try:
-                            ts = int(f.stat().st_mtime)
+                            mt = int(meta_p.stat().st_mtime)
                         except Exception:
-                            ts = now
-                        rel = f"ide/{project}/{ver}/{platform}/{file_name}"
-                        out.append(
-                            IdeAssetRow(
-                                project=project,
-                                version=ver,
-                                platform=platform,
-                                file_name=file_name,
-                                file_rel_path=rel,
-                                published_ts=ts,
-                                is_latest=1 if stable_latest and ver == stable_latest else 0,
-                            )
+                            mt = now
+                        bt = mt
+                        if binary_p.is_file():
+                            try:
+                                bt = int(binary_p.stat().st_mtime)
+                            except Exception:
+                                bt = mt
+                        published_ts = max(mt, bt)
+
+                        if not binary_p.is_file():
+                            invalid_reason = "binary_missing"
+                        else:
+                            obj = _read_json_utf8(meta_p)
+                            if obj is None:
+                                invalid_reason = "meta_json_unparseable"
+                            else:
+                                sub_product_name = _req_str(obj, "sub_product_name")
+                                version = _req_str(obj, "version")
+                                os_type = _req_str(obj, "os_type")
+                                arch = _req_str(obj, "arch")
+
+                                if not (sub_product_name and version and os_type and arch):
+                                    invalid_reason = "meta_missing_required_fields"
+                                else:
+                                    if sub_product_name != project:
+                                        invalid_reason = "meta_project_mismatch"
+                                    elif version != ver:
+                                        invalid_reason = "meta_version_mismatch"
+                                    else:
+                                        try:
+                                            norm_plat = normalize_platform(os_type, arch)
+                                        except Exception:
+                                            norm_plat = ""
+                                        if not norm_plat:
+                                            invalid_reason = "platform_normalize_failed"
+                                        elif norm_plat != platform:
+                                            invalid_reason = "platform_dir_mismatch"
+                                        else:
+                                            is_valid = 1
+                                            invalid_reason = None
+
+                    # If meta wasn't present (or multiple), still store deterministic relpaths
+                    if not meta_rel_path:
+                        meta_rel_path = f"ide/{project}/{ver}/{platform}/"
+                    if not binary_rel_path:
+                        binary_rel_path = f"ide/{project}/{ver}/{platform}/"
+
+                    out.append(
+                        IdePlatformRow(
+                            project=project,
+                            version=ver,
+                            platform=platform,
+                            meta_rel_path=meta_rel_path,
+                            binary_rel_path=binary_rel_path,
+                            published_ts=int(published_ts),
+                            is_latest=int(is_latest),
+                            is_valid=int(is_valid),
+                            invalid_reason=invalid_reason,
                         )
+                    )
 
         return out
 
@@ -229,6 +310,11 @@ class IdeRegistry:
         return v.strip() if v else None
 
     def list_versions(self, project: str) -> List[IdeVersionRow]:
+        """
+        List versions that have at least one valid platform artifact.
+        published_ts = max published_ts among valid platforms within version.
+        is_latest computed from indexed rows (set during rebuild).
+        """
         self._ensure_inited()
         proj = (project or "").strip()
         if not _safe_seg(proj):
@@ -241,8 +327,8 @@ class IdeRegistry:
                 version AS version,
                 MAX(published_ts) AS published_ts,
                 MAX(is_latest) AS is_latest
-            FROM ide_assets
-            WHERE project=?
+            FROM ide_platforms
+            WHERE project=? AND is_valid=1
             GROUP BY version
             ORDER BY version DESC
             """,
@@ -262,63 +348,35 @@ class IdeRegistry:
 
     def pick_latest_asset(self, project: str, platform: str) -> Optional[Tuple[str, str]]:
         """
-        Returns (file_rel_path, file_name) for stable latest of project.
-        Selection rules:
-        - prefer exact platform match if platform != universal
-        - fallback to universal
-        - if multiple files, choose most recent (published_ts desc), then name asc
+        Returns (binary_rel_path, binary_filename) for stable latest of project for the exact platform.
+
+        Per TZ:
+        - NO universal fallback
+        - platform must match normalize_platform(os_type, arch) == platform dir name (enforced in is_valid=1)
+        - choose only is_latest=1 AND is_valid=1
         """
         self._ensure_inited()
         proj = (project or "").strip()
-        plat = (platform or "").strip() or UNIVERSAL_PLATFORM
-        if not _safe_seg(proj):
+        plat = (platform or "").strip()
+        if not _safe_seg(proj) or not _safe_seg(plat):
             return None
-        if not _safe_seg(plat):
-            plat = UNIVERSAL_PLATFORM
 
         conn = self._conn()
-
-        if plat != UNIVERSAL_PLATFORM:
-            row = conn.execute(
-                """
-                SELECT file_rel_path, file_name
-                FROM ide_assets
-                WHERE project=? AND is_latest=1 AND platform=?
-                ORDER BY published_ts DESC, file_name ASC
-                LIMIT 1
-                """,
-                (proj, plat),
-            ).fetchone()
-            if row:
-                return (str(row["file_rel_path"]), str(row["file_name"]))
-
-            row2 = conn.execute(
-                """
-                SELECT file_rel_path, file_name
-                FROM ide_assets
-                WHERE project=? AND is_latest=1 AND platform=?
-                ORDER BY published_ts DESC, file_name ASC
-                LIMIT 1
-                """,
-                (proj, UNIVERSAL_PLATFORM),
-            ).fetchone()
-            if row2:
-                return (str(row2["file_rel_path"]), str(row2["file_name"]))
-            return None
-
-        row3 = conn.execute(
+        row = conn.execute(
             """
-            SELECT file_rel_path, file_name
-            FROM ide_assets
-            WHERE project=? AND is_latest=1
-            ORDER BY published_ts DESC, file_name ASC
+            SELECT binary_rel_path
+            FROM ide_platforms
+            WHERE project=? AND platform=? AND is_latest=1 AND is_valid=1
             LIMIT 1
             """,
-            (proj,),
+            (proj, plat),
         ).fetchone()
-        if not row3:
+        if not row:
             return None
-        return (str(row3["file_rel_path"]), str(row3["file_name"]))
+
+        rel = str(row["binary_rel_path"])
+        name = Path(rel).name
+        return (rel, name)
 
 
 IDE_REGISTRY = IdeRegistry()

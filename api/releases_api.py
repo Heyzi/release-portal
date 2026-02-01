@@ -42,10 +42,33 @@ def api_docs():
 
 @bp_releases.get("/api/releases/file/<path:path>")
 def api_release_file(path: str):
-    # Serve release file by relative path
-    if not is_safe_relpath(path):
+    """
+    Serve release file by relative path.
+
+    Per TZ (non-functional):
+    - must reject unsafe paths (no абсолютных/..)
+    - serves files from RELEASES_ROOT
+    """
+    if not path or not is_safe_relpath(path):
         abort(400, "Invalid path")
     return send_from_directory(str(RELEASES_ROOT), path, as_attachment=True)
+
+
+# Compatibility route for legacy/static links like /ide/<project>/<version>/... from UI or docs.
+# This keeps existing links working while the UI/services are migrated to /api/releases/file/<relpath>.
+@bp_releases.get("/ide/<path:path>")
+def ide_direct_file(path: str):
+    """
+    Serve IDE files under RELEASES_ROOT/ide via direct public path.
+
+    Example:
+      /ide/myide/1.0.0/win32-x64/myide-1.0.0.zip
+      -> sends file RELEASES_ROOT/ide/myide/1.0.0/win32-x64/myide-1.0.0.zip
+    """
+    rel = f"ide/{path}"
+    if not is_safe_relpath(rel):
+        abort(400, "Invalid path")
+    return send_from_directory(str(RELEASES_ROOT), rel, as_attachment=True)
 
 
 @bp_releases.get("/api/projects")
@@ -56,7 +79,7 @@ def api_projects():
 
 @bp_releases.get("/api/releases")
 def api_releases():
-    # Return releases for category/project
+    # Return releases for category/project (generic endpoint)
     category = (request.args.get("category") or "").strip()
     project = (request.args.get("project") or "").strip()
     if not category or not project:

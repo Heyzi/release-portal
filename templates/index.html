@@ -6,42 +6,14 @@
     <meta charset="utf-8">
     <title>Release manager</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="color-scheme" content="dark light">
+    <meta name="color-scheme" content="light">
 
     <style>
         /* =========================
-           Theme variables
-           Default = DARK
-           ========================= */
+       Theme variables
+       LIGHT only
+       ========================= */
         :root {
-            --bg: #0d1117;
-            --panel: #161b22;
-            --panel-2: #0f1520;
-            --text: #e6edf3;
-            --muted: #8b949e;
-            --border: #30363d;
-            --border-soft: #21262d;
-
-            --accent: #2f81f7;
-            --accent-soft: rgba(47, 129, 247, 0.18);
-
-            --success: #3fb950;
-            --success-soft: rgba(63, 185, 80, 0.18);
-
-            --danger: #f85149;
-            --danger-soft: rgba(248, 81, 73, 0.18);
-
-            --shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
-            --radius: 10px;
-
-            --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-            --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-
-            --focus-ring: rgba(47, 129, 247, 0.35);
-        }
-
-        /* LIGHT override (your old palette) */
-        :root[data-theme="light"] {
             --bg: #f6f8fa;
             --panel: #ffffff;
             --panel-2: #f6f8fa;
@@ -60,6 +32,10 @@
             --danger-soft: #ffebe9;
 
             --shadow: 0 1px 0 rgba(27, 31, 36, 0.04);
+            --radius: 10px;
+
+            --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 
             --focus-ring: rgba(9, 105, 218, 0.25);
         }
@@ -247,13 +223,9 @@
 
         .tab.active {
             background: var(--panel);
-            border-color: rgba(47, 129, 247, 0.35);
+            border-color: rgba(9, 105, 218, 0.35);
             color: var(--text);
             font-weight: 650;
-        }
-
-        :root[data-theme="light"] .tab.active {
-            border-color: rgba(9, 105, 218, 0.35);
         }
 
         .control {
@@ -304,12 +276,8 @@
         }
 
         .project-item.active a {
-            border-color: rgba(47, 129, 247, 0.35);
-            background: var(--accent-soft);
-        }
-
-        :root[data-theme="light"] .project-item.active a {
             border-color: rgba(9, 105, 218, 0.35);
+            background: var(--accent-soft);
         }
 
         .project-name {
@@ -701,6 +669,107 @@
             white-space: nowrap;
             border: 0;
         }
+
+        /* =========================
+       Modal common
+       ========================= */
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(27, 31, 36, 0.45);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            z-index: 50;
+        }
+
+        .modal-backdrop.open {
+            display: flex;
+        }
+
+        .modal {
+            width: min(720px, 100%);
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+            overflow: hidden;
+        }
+
+        .modal-head {
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--border-soft);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .modal-head h3 {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: -0.2px;
+        }
+
+        .modal-body {
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 160px minmax(0, 1fr);
+            gap: 10px;
+            align-items: center;
+        }
+
+        @media (max-width: 740px) {
+            .form-row {
+                grid-template-columns: 1fr;
+                align-items: stretch;
+            }
+        }
+
+        .label {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .hint {
+            font-size: 12px;
+            color: var(--muted);
+            line-height: 1.35;
+        }
+
+        .modal-foot {
+            padding: 12px 14px;
+            border-top: 1px solid var(--border-soft);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .error-box {
+            display: none;
+            padding: 10px 12px;
+            border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+            background: var(--danger-soft);
+            color: var(--danger);
+            border-radius: 10px;
+            font-size: 12px;
+            line-height: 1.35;
+            white-space: pre-wrap;
+        }
+
+        .error-box.show {
+            display: block;
+        }
     </style>
 </head>
 
@@ -719,15 +788,19 @@
 
                 <div class="mini-link">
                     <span class="mono">Latest:</span>
-                    <a id="latestApiLink" href="#" class="mono">/api/ide/latest?sub_product_name=product</a>
+                    <a id="latestApiLink" href="#"
+                        class="mono">/api/ide/latest?sub_product_name=product&os_type=win32&arch=x64</a>
                 </div>
 
-                <div class="mini-link" style="gap:10px;">
-                    <span class="mono">Theme:</span>
-                    <button id="themeToggle" type="button" class="btn btn-small">Light</button>
-                </div>
+                <!-- Admin-only buttons; JS shows/hides -->
+                <button id="createIdeProjectBtnTop" type="button" class="btn" style="display:none;">
+                    Create IDE project
+                </button>
+
+                <button id="uploadIdeBtnTop" type="button" class="btn btn-primary" style="display:none;">
+                    Upload IDE artifact
+                </button>
             </div>
-
         </header>
 
         <main class="layout">
@@ -803,6 +876,100 @@
         </main>
     </div>
 
+    <!-- Create IDE project modal -->
+    <div id="ideCreateBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="ideCreateTitle">
+        <div class="modal">
+            <div class="modal-head">
+                <h3 id="ideCreateTitle">Create IDE project</h3>
+                <button id="ideCreateClose" type="button" class="btn btn-small">Close</button>
+            </div>
+
+            <div class="modal-body">
+                <div id="ideCreateError" class="error-box"></div>
+
+                <div class="form-row">
+                    <div class="label">Project name</div>
+                    <input id="ideCreateProject" class="control" type="text" autocomplete="off"
+                        placeholder="e.g. myide">
+                </div>
+
+                <div class="hint">
+                    Creates directory <span class="mono">ide/&lt;project&gt;/</span> and rebuilds IDE index.
+                </div>
+            </div>
+
+            <div class="modal-foot">
+                <button id="ideCreateSubmit" type="button" class="btn btn-primary">Create</button>
+                <button id="ideCreateCancel" type="button" class="btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- IDE upload modal -->
+    <div id="ideUploadBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="ideUploadTitle">
+        <div class="modal">
+            <div class="modal-head">
+                <h3 id="ideUploadTitle">Upload IDE artifact</h3>
+                <button id="ideUploadClose" type="button" class="btn btn-small">Close</button>
+            </div>
+
+            <div class="modal-body">
+                <div id="ideUploadError" class="error-box"></div>
+
+                <div class="form-row">
+                    <div class="label">Project</div>
+                    <input id="ideProject" class="control" type="text" readonly>
+                </div>
+
+                <div class="form-row">
+                    <div class="label">Version (semver)</div>
+                    <input id="ideVersion" class="control" type="text" autocomplete="off" inputmode="text"
+                        placeholder="e.g. 1.2.3">
+                </div>
+
+                <div class="form-row">
+                    <div class="label">OS</div>
+                    <select id="ideOsType" class="control">
+                        <option value="">Select OS…</option>
+                        <option value="win32">win32</option>
+                        <option value="darwin">darwin</option>
+                        <option value="linux">linux</option>
+                    </select>
+                </div>
+
+                <div class="form-row">
+                    <div class="label">Arch</div>
+                    <select id="ideArch" class="control">
+                        <option value="">Select arch…</option>
+                        <option value="x64">x64</option>
+                        <option value="arm64">arm64</option>
+                    </select>
+                </div>
+
+                <div class="form-row">
+                    <div class="label">Binary file</div>
+                    <input id="ideBinary" class="control" type="file">
+                </div>
+
+                <div class="form-row">
+                    <div class="label">Changelog (optional)</div>
+                    <input id="ideChangelog" class="control" type="file" accept=".md,text/markdown">
+                </div>
+
+                <div class="hint">
+                    Metadata JSON is generated automatically and uploaded as
+                    <span class="mono">&lt;binary_filename&gt;.json</span> with required fields:
+                    <span class="mono">sub_product_name, version, os_type, arch</span>.
+                </div>
+            </div>
+
+            <div class="modal-foot">
+                <button id="ideUploadSubmit" type="button" class="btn btn-primary">Upload</button>
+                <button id="ideUploadCancel" type="button" class="btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const projectSearch = document.getElementById('projectSearch');
         const releaseSearch = document.getElementById('releaseSearch');
@@ -818,55 +985,33 @@
         const categoryTabs = document.getElementById('categoryTabs');
         const projectList = document.getElementById('projectList');
 
-        const themeToggle = document.getElementById('themeToggle');
+        const createIdeProjectBtnTop = document.getElementById('createIdeProjectBtnTop');
+        const uploadIdeBtnTop = document.getElementById('uploadIdeBtnTop');
+
+        const ideCreateBackdrop = document.getElementById('ideCreateBackdrop');
+        const ideCreateClose = document.getElementById('ideCreateClose');
+        const ideCreateCancel = document.getElementById('ideCreateCancel');
+        const ideCreateSubmit = document.getElementById('ideCreateSubmit');
+        const ideCreateError = document.getElementById('ideCreateError');
+        const ideCreateProject = document.getElementById('ideCreateProject');
+
+        const ideUploadBackdrop = document.getElementById('ideUploadBackdrop');
+        const ideUploadClose = document.getElementById('ideUploadClose');
+        const ideUploadCancel = document.getElementById('ideUploadCancel');
+        const ideUploadSubmit = document.getElementById('ideUploadSubmit');
+        const ideUploadError = document.getElementById('ideUploadError');
+
+        const ideProject = document.getElementById('ideProject');
+        const ideVersion = document.getElementById('ideVersion');
+        const ideOsType = document.getElementById('ideOsType');
+        const ideArch = document.getElementById('ideArch');
+        const ideBinary = document.getElementById('ideBinary');
+        const ideChangelog = document.getElementById('ideChangelog');
 
         const isAdminPage = window.location.pathname.startsWith('/admin');
 
         let currentCategoryId = '';
         let currentProjectId = '';
-
-        /* =========================
-           Theme (default = dark)
-           ========================= */
-        function applyTheme(theme) {
-            const t = (theme === 'light') ? 'light' : 'dark';
-            if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
-            else document.documentElement.removeAttribute('data-theme');
-
-            try { localStorage.setItem('theme', t); } catch (_) { }
-
-            if (themeToggle) {
-                themeToggle.textContent = (t === 'light') ? 'Dark' : 'Light';
-                themeToggle.setAttribute('aria-label', (t === 'light') ? 'Switch to dark theme' : 'Switch to light theme');
-                themeToggle.setAttribute('title', (t === 'light') ? 'Switch to dark theme' : 'Switch to light theme');
-            }
-        }
-
-        function initTheme() {
-            let saved = '';
-            try { saved = localStorage.getItem('theme') || ''; } catch (_) { saved = ''; }
-            // Default: DARK (when saved is empty or invalid)
-            applyTheme(saved === 'light' ? 'light' : 'dark');
-        }
-
-        if (themeToggle) {
-            themeToggle.addEventListener('click', () => {
-                const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-                applyTheme(isLight ? 'dark' : 'light');
-            });
-        }
-
-        initTheme();
-
-        if (isAdminPage && deleteProjectForm) {
-            deleteProjectForm.style.display = '';
-            deleteProjectForm.addEventListener('submit', function (e) {
-                const cid = (deleteCategoryInput && deleteCategoryInput.value) ? deleteCategoryInput.value : '';
-                const pid = (deleteProjectInput && deleteProjectInput.value) ? deleteProjectInput.value : '';
-                const ok = confirm('Delete project "' + pid + '" and ALL its releases?');
-                if (!ok) e.preventDefault();
-            });
-        }
 
         const projectItems = projectList ? Array.from(projectList.querySelectorAll('.project-item')) : [];
         const tabButtons = categoryTabs ? Array.from(categoryTabs.querySelectorAll('.tab')) : [];
@@ -891,6 +1036,13 @@
             }
         }
 
+        function isSemver(v) {
+            // strict-ish semver: MAJOR.MINOR.PATCH with optional -prerelease and +build
+            const s = String(v || '').trim();
+            const re = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
+            return re.test(s);
+        }
+
         function getActiveCategoryId() {
             const active = projectItems.find(li => li.classList.contains('active'));
             return active ? (active.getAttribute('data-category-id') || '') : '';
@@ -907,6 +1059,19 @@
                 b.classList.toggle('active', isActive);
                 b.setAttribute('aria-selected', isActive ? 'true' : 'false');
             });
+        }
+
+        function el(tag, attrs, children) {
+            const n = document.createElement(tag);
+            if (attrs) {
+                Object.keys(attrs).forEach(k => {
+                    if (k === 'className') n.className = attrs[k];
+                    else if (k === 'text') n.textContent = attrs[k];
+                    else n.setAttribute(k, attrs[k]);
+                });
+            }
+            (children || []).forEach(c => n.appendChild(c));
+            return n;
         }
 
         function _setLatestChip(href, label) {
@@ -939,29 +1104,34 @@
             if (!latestApiLink) return;
 
             if (!categoryId || !projectId) {
-                _setLatestChip('#', '/api/ide/latest?sub_product_name=product');
+                _setLatestChip('#', '/api/ide/latest?sub_product_name=product&os_type=win32&arch=x64');
                 return;
             }
 
             if (categoryId === 'extensions') {
                 const p = splitExtensionProjectId(projectId);
-                if (!p) {
-                    _setLatestChip('#', '#');
-                    return;
-                }
+                if (!p) { _setLatestChip('#', '#'); return; }
                 const href = '/vscode/gallery/' + encodeURIComponent(p.ns) + '/' + encodeURIComponent(p.ext) + '/latest?targetPlatform=universal';
                 _setLatestChip(href, href);
                 return;
             }
 
             if (categoryId === 'ide') {
-                const href = '/api/ide/latest?sub_product_name=' + encodeURIComponent(projectId);
+                const href = '/api/ide/latest?sub_product_name=' + encodeURIComponent(projectId) + '&os_type=win32&arch=x64';
                 _setLatestChip(href, href);
                 return;
             }
 
             const href = '/' + categoryId + '/latest?sub_product_name=' + encodeURIComponent(projectId);
             _setLatestChip(href, href);
+        }
+
+        function updateTopButtonsVisibility() {
+            const inIde = (currentCategoryId === 'ide');
+
+            // extensions upload через веб быть не должно => показываем кнопки только для ide
+            if (createIdeProjectBtnTop) createIdeProjectBtnTop.style.display = (isAdminPage && inIde) ? '' : 'none';
+            if (uploadIdeBtnTop) uploadIdeBtnTop.style.display = (isAdminPage && inIde && !!currentProjectId) ? '' : 'none';
         }
 
         function setActiveProjectUi(categoryId, projectId) {
@@ -982,6 +1152,8 @@
 
             if (deleteCategoryInput) deleteCategoryInput.value = categoryId || '';
             if (deleteProjectInput) deleteProjectInput.value = projectId || '';
+
+            updateTopButtonsVisibility();
         }
 
         function applySidebarFilter() {
@@ -1009,6 +1181,9 @@
                     updateUrl(cid, pid);
                 } else {
                     updateLatestApiChip(categoryId, '');
+                    currentCategoryId = categoryId || '';
+                    currentProjectId = '';
+                    updateTopButtonsVisibility();
                     if (releaseList) {
                         releaseList.innerHTML = '';
                         releaseList.appendChild(el('div', { className: 'empty', text: 'No projects match the filter.' }));
@@ -1032,19 +1207,6 @@
                 url.searchParams.set('project', projectId);
                 window.history.replaceState({}, '', url.toString());
             } catch (_) { }
-        }
-
-        function el(tag, attrs, children) {
-            const n = document.createElement(tag);
-            if (attrs) {
-                Object.keys(attrs).forEach(k => {
-                    if (k === 'className') n.className = attrs[k];
-                    else if (k === 'text') n.textContent = attrs[k];
-                    else n.setAttribute(k, attrs[k]);
-                });
-            }
-            (children || []).forEach(c => n.appendChild(c));
-            return n;
         }
 
         function normalizePlatformFromAsset(a) {
@@ -1116,6 +1278,7 @@
                     del.appendChild(el('button', { type: 'submit', className: 'btn btn-danger', text: 'Delete' }));
                     actions.appendChild(del);
 
+                    // Notes upload can remain (не является "upload extensions artifacts")
                     const notesUploadForm = el('form', {
                         method: 'post',
                         action: '/admin/upload-notes',
@@ -1312,6 +1475,227 @@
             return first || null;
         }
 
+        function showBox(boxEl, msg) {
+            if (!boxEl) return;
+            boxEl.textContent = String(msg || '');
+            boxEl.classList.add('show');
+        }
+
+        function clearBox(boxEl) {
+            if (!boxEl) return;
+            boxEl.textContent = '';
+            boxEl.classList.remove('show');
+        }
+
+        function openModal(backdropEl, focusEl) {
+            if (!backdropEl) return;
+            backdropEl.classList.add('open');
+            try { if (focusEl) focusEl.focus(); } catch (_) { }
+        }
+
+        function closeModal(backdropEl) {
+            if (!backdropEl) return;
+            backdropEl.classList.remove('open');
+        }
+
+        // ---------- Create IDE project modal ----------
+        function openIdeCreateModal() {
+            clearBox(ideCreateError);
+            if (ideCreateProject) ideCreateProject.value = '';
+            openModal(ideCreateBackdrop, ideCreateProject);
+        }
+
+        function closeIdeCreateModal() {
+            closeModal(ideCreateBackdrop);
+            clearBox(ideCreateError);
+        }
+
+        async function submitIdeCreate() {
+            clearBox(ideCreateError);
+
+            if (!isAdminPage) { showBox(ideCreateError, 'Admin mode required.'); return; }
+            if (currentCategoryId !== 'ide') { showBox(ideCreateError, 'IDE category must be selected.'); return; }
+
+            const proj = (ideCreateProject && ideCreateProject.value) ? ideCreateProject.value.trim() : '';
+            if (!proj) { showBox(ideCreateError, 'Project name is required.'); return; }
+
+            // enforce simple safe segment (mirrors backend expectations)
+            if (!/^[A-Za-z0-9._-]+$/.test(proj) || proj === '.' || proj === '..') {
+                showBox(ideCreateError, 'Invalid project name. Allowed: letters, digits, dot, underscore, dash.');
+                return;
+            }
+
+            const fd = new FormData();
+            fd.append('project', proj);
+
+            if (ideCreateSubmit) {
+                ideCreateSubmit.setAttribute('disabled', 'disabled');
+                ideCreateSubmit.textContent = 'Creating…';
+            }
+
+            try {
+                const res = await fetch('/admin/ide/create-project', {
+                    method: 'POST',
+                    body: fd,
+                    credentials: 'same-origin'
+                });
+
+                if (!res.ok) {
+                    let msg = 'Create failed (HTTP ' + res.status + ')';
+                    try { const t = await res.text(); if (t && t.trim()) msg = t; } catch (_) { }
+                    showBox(ideCreateError, msg);
+                    return;
+                }
+
+                // navigate to new project
+                window.location.href = '/admin?category=ide&project=' + encodeURIComponent(proj);
+            } catch (_) {
+                showBox(ideCreateError, 'Create failed.');
+            } finally {
+                if (ideCreateSubmit) {
+                    ideCreateSubmit.removeAttribute('disabled');
+                    ideCreateSubmit.textContent = 'Create';
+                }
+            }
+        }
+
+        // ---------- IDE upload modal ----------
+        function openIdeUploadModal() {
+            clearBox(ideUploadError);
+
+            if (ideProject) ideProject.value = currentProjectId || '';
+            if (ideVersion) ideVersion.value = '';
+            if (ideOsType) ideOsType.value = '';
+            if (ideArch) ideArch.value = '';
+            if (ideBinary) ideBinary.value = '';
+            if (ideChangelog) ideChangelog.value = '';
+
+            openModal(ideUploadBackdrop, ideVersion);
+        }
+
+        function closeIdeUploadModal() {
+            closeModal(ideUploadBackdrop);
+            clearBox(ideUploadError);
+        }
+
+        async function submitIdeUpload() {
+            clearBox(ideUploadError);
+
+            if (!isAdminPage) { showBox(ideUploadError, 'Admin mode required.'); return; }
+            if (currentCategoryId !== 'ide') { showBox(ideUploadError, 'IDE category must be selected.'); return; }
+            if (!currentProjectId) { showBox(ideUploadError, 'Project must be selected.'); return; }
+
+            const ver = (ideVersion && ideVersion.value) ? ideVersion.value.trim() : '';
+            const osType = (ideOsType && ideOsType.value) ? ideOsType.value.trim() : '';
+            const arch = (ideArch && ideArch.value) ? ideArch.value.trim() : '';
+            const binFile = (ideBinary && ideBinary.files && ideBinary.files.length > 0) ? ideBinary.files[0] : null;
+            const clFile = (ideChangelog && ideChangelog.files && ideChangelog.files.length > 0) ? ideChangelog.files[0] : null;
+
+            if (!ver) { showBox(ideUploadError, 'Version is required.'); return; }
+            if (!isSemver(ver)) { showBox(ideUploadError, 'Invalid version. Must be semver like 1.2.3 or 1.2.3-beta.1'); return; }
+            if (!osType) { showBox(ideUploadError, 'OS is required.'); return; }
+            if (!arch) { showBox(ideUploadError, 'Arch is required.'); return; }
+            if (!binFile) { showBox(ideUploadError, 'Binary file is required.'); return; }
+
+            // Build meta JSON per TZ:
+            // meta filename must equal binary filename + ".json"
+            const metaObj = {
+                sub_product_name: currentProjectId,
+                version: ver,
+                os_type: osType,
+                arch: arch
+            };
+            const metaText = JSON.stringify(metaObj, null, 2) + "\n";
+            const metaFileName = binFile.name + ".json";
+            const metaFile = new File([metaText], metaFileName, { type: "application/json" });
+
+            const fd = new FormData();
+            fd.append('binary', binFile, binFile.name);
+            fd.append('meta', metaFile, metaFileName);
+            if (clFile) fd.append('changelog', clFile, clFile.name);
+
+            if (ideUploadSubmit) {
+                ideUploadSubmit.setAttribute('disabled', 'disabled');
+                ideUploadSubmit.textContent = 'Uploading…';
+            }
+
+            try {
+                // Per TZ: POST /api/ide/upload
+                const res = await fetch('/api/ide/upload', {
+                    method: 'POST',
+                    body: fd,
+                    credentials: 'same-origin'
+                });
+
+                if (!res.ok) {
+                    let msg = 'Upload failed (HTTP ' + res.status + ')';
+                    try {
+                        const ct = res.headers.get('content-type') || '';
+                        if (ct.includes('application/json')) {
+                            const j = await res.json();
+                            if (j && (j.errorMessage || j.message)) msg = j.errorMessage || j.message;
+                        } else {
+                            const t = await res.text();
+                            if (t && t.trim()) msg = t;
+                        }
+                    } catch (_) { }
+                    showBox(ideUploadError, msg);
+                    return;
+                }
+
+                closeIdeUploadModal();
+                window.location.href = '/admin?category=ide&project=' + encodeURIComponent(currentProjectId);
+            } catch (_) {
+                showBox(ideUploadError, 'Upload failed.');
+            } finally {
+                if (ideUploadSubmit) {
+                    ideUploadSubmit.removeAttribute('disabled');
+                    ideUploadSubmit.textContent = 'Upload';
+                }
+            }
+        }
+
+        // ---------- Modal generic interactions ----------
+        function bindBackdrop(backdropEl, closeFn) {
+            if (!backdropEl) return;
+            backdropEl.addEventListener('click', function (e) {
+                if (e.target === backdropEl) closeFn();
+            });
+        }
+
+        bindBackdrop(ideUploadBackdrop, closeIdeUploadModal);
+        bindBackdrop(ideCreateBackdrop, closeIdeCreateModal);
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key !== 'Escape') return;
+            if (ideUploadBackdrop && ideUploadBackdrop.classList.contains('open')) closeIdeUploadModal();
+            if (ideCreateBackdrop && ideCreateBackdrop.classList.contains('open')) closeIdeCreateModal();
+        });
+
+        // Buttons
+        if (createIdeProjectBtnTop) createIdeProjectBtnTop.addEventListener('click', openIdeCreateModal);
+        if (uploadIdeBtnTop) uploadIdeBtnTop.addEventListener('click', openIdeUploadModal);
+
+        if (ideCreateClose) ideCreateClose.addEventListener('click', closeIdeCreateModal);
+        if (ideCreateCancel) ideCreateCancel.addEventListener('click', closeIdeCreateModal);
+        if (ideCreateSubmit) ideCreateSubmit.addEventListener('click', submitIdeCreate);
+
+        if (ideUploadClose) ideUploadClose.addEventListener('click', closeIdeUploadModal);
+        if (ideUploadCancel) ideUploadCancel.addEventListener('click', closeIdeUploadModal);
+        if (ideUploadSubmit) ideUploadSubmit.addEventListener('click', submitIdeUpload);
+
+        // Admin delete project confirm
+        if (isAdminPage && deleteProjectForm) {
+            deleteProjectForm.style.display = '';
+            deleteProjectForm.addEventListener('submit', function (e) {
+                const cid = (deleteCategoryInput && deleteCategoryInput.value) ? deleteCategoryInput.value : '';
+                const pid = (deleteProjectInput && deleteProjectInput.value) ? deleteProjectInput.value : '';
+                const ok = confirm('Delete project "' + pid + '" and ALL its releases?');
+                if (!ok) e.preventDefault();
+            });
+        }
+
+        // Sidebar project click
         projectItems.forEach(li => {
             const a = li.querySelector('a.project-link');
             if (!a) return;
@@ -1329,6 +1713,7 @@
             });
         });
 
+        // Tabs
         tabButtons.forEach(btn => {
             btn.addEventListener('click', function () {
                 const cid = btn.getAttribute('data-category-id') || '';
@@ -1348,6 +1733,9 @@
                     applySidebarFilter();
                     if (projectTitle) projectTitle.textContent = 'Releases';
                     updateLatestApiChip(cid, '');
+                    currentCategoryId = cid;
+                    currentProjectId = '';
+                    updateTopButtonsVisibility();
                     if (releaseList) {
                         releaseList.innerHTML = '';
                         releaseList.appendChild(el('div', { className: 'empty', text: 'No projects.' }));
@@ -1385,7 +1773,10 @@
                 loadReleases(cid, pid);
                 updateUrl(cid, pid);
             } else {
+                currentCategoryId = cid || '';
+                currentProjectId = '';
                 updateLatestApiChip(cid, '');
+                updateTopButtonsVisibility();
                 if (releaseList) {
                     releaseList.innerHTML = '';
                     releaseList.appendChild(el('div', { className: 'empty', text: 'No projects.' }));
